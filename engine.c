@@ -96,7 +96,7 @@ struct OctTreeNode {
 	union {
 		Color3f color;
 		struct {
-			struct OctTreeNode* n0;
+			OctTreeNode* n0;
 			OctTreeNode* n1;
 			OctTreeNode* n2;
 			OctTreeNode* n3;
@@ -151,9 +151,9 @@ int main(void)
 	camera_target = (Point3f) { cos(horizontal_angle) * cos(vertical_angle)
 							  , sin(horizontal_angle) * cos(vertical_angle)
 							  , sin(vertical_angle)};
-	const int height = 200;
-	const int width = 200;
-	float * piksele = (float*)malloc(height*width*3*sizeof(float));
+	const int height = 500;
+	const int width = 500;
+	float * piksele = malloc(height*width*3*sizeof(*piksele));
 	/*for (int y = 0; y < height; y++) for (int x = 0; x < width; x++)*/
 	/*{*/
 		/*int index_base = (y * width + x) * 3;*/
@@ -301,7 +301,7 @@ int ray_cast_oct_tree(Point3f origin, Point3f direction, OctTreeNode * tree, Col
 	}
 
 	// sortowanie
-	qsort(intersection_dist, intersection_size, sizeof(float), cmpFloat);
+	qsort(intersection_dist, intersection_size, sizeof(*intersection_dist), cmpFloat);
 	// aditional point for last intersection check
 	intersection_dist[intersection_size] = intersection_dist[intersection_size-1] + 1.;
 	intersection_size++;
@@ -388,41 +388,41 @@ int ray_cast_oct_tree(Point3f origin, Point3f direction, OctTreeNode * tree, Col
 
 void initOctTree()
 {
-	mainOctTree = (OctTreeNode*)malloc(sizeof(OctTreeNode));
+	mainOctTree = malloc(sizeof(*mainOctTree));
 	mainOctTree->center = (Point3f){0.,0.,0.};
 	mainOctTree->radius = 1.;
 	mainOctTree->type = Partial;
 	OctTreeNode* tmp;
-	tmp = (OctTreeNode*)malloc(sizeof(OctTreeNode));
+	tmp = malloc(sizeof(*tmp));
 	tmp->center = (Point3f){-.5, .5, .5};
 	tmp->radius = .5;
 	tmp->type = Solid;
 	tmp->color = (Color3f) {0.0, 0.0, 1.0};
 	mainOctTree->n0 = tmp;
-	tmp = (OctTreeNode*)malloc(sizeof(OctTreeNode));
+	tmp = malloc(sizeof(*tmp));
 	tmp->center = (Point3f){.5, .5, .5};
 	tmp->radius = .5;
 	tmp->type = Solid;
 	tmp->color = (Color3f) {1.0, 0.0, 0.0};
 	mainOctTree->n1 = tmp;
-	tmp = (OctTreeNode*)malloc(sizeof(OctTreeNode));
+	tmp = malloc(sizeof(*tmp));
 	tmp->center = (Point3f){-.5, -.5, .5};
 	tmp->radius = .5;
 	tmp->type = Solid;
 	tmp->color = (Color3f) {1.0, 0.0, 1.0};
 	mainOctTree->n2 = tmp;
-	tmp = (OctTreeNode*)malloc(sizeof(OctTreeNode));
+	tmp = malloc(sizeof(*tmp));
 	tmp->center = (Point3f){.5, -.5, .5};
 	tmp->radius = .5;
 	tmp->type = Empty;
 	mainOctTree->n3 = tmp;
-	tmp = (OctTreeNode*)malloc(sizeof(OctTreeNode));
+	tmp = malloc(sizeof(*tmp));
 	tmp->center = (Point3f){-.5, .5, -.5};
 	tmp->radius = .5;
 	tmp->type = Solid;
 	tmp->color = (Color3f) {0.0, 1.0, 0.0};
 	mainOctTree->n4 = tmp;
-	tmp = (OctTreeNode*)malloc(sizeof(OctTreeNode));
+	tmp = malloc(sizeof(*tmp));
 	tmp->center = (Point3f){.5, .5, -.5};
 	tmp->radius = .5;
 	tmp->type = Empty;
