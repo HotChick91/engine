@@ -3,6 +3,8 @@
 #include <math.h>
 #include <stdlib.h>
 
+#define ARR_IDX(x, y, col) (((y) * width + (x)) * 3) + (col)
+
 typedef struct Point3f {
 	float x;
 	float y;
@@ -19,6 +21,26 @@ Point3f vectMulScalar(Point3f a, Point3f b, float c)
 	return (Point3f){a.x + b.x * c, a.y + b.y * c, a.z + b.z * c};
 }
 
+Point3f vectSum(Point3f a, Point3f b, Point3f c)
+{
+	return (Point3f){a.x + b.x + c.x, a.y + b.y + c.y, a.z + b.z + c.z};
+}
+
+Point3f vectDiv(Point3f a, float c)
+{
+	return (Point3f){a.x / c, a.y / c, a.z / c};
+}
+
+Point3f vectNormalize(Point3f a)
+{
+	float len = sqrt(a.x * a.x + a.y * a.y + a.z * a.z);
+	return vectDiv(a, len);
+}
+
+int cmpFloat(const void * a, const void * b)
+{
+	return (*(float*)a - *(float*)b);
+}
 
 typedef struct Color3f {
 	float r;
@@ -26,11 +48,36 @@ typedef struct Color3f {
 	float b;
 } Color3f;
 
-Point3f camera_pos = {-0.75,0,0};
-Point3f camera_target = {1.0,0,0};
+enum OctTreeNodeType {Empty, Solid, Partial}; // TODO owrapować to ładnie, żeby nie robić syfu w top lvl
+
+typedef struct OctTreeNode OctTreeNode;
+
+struct OctTreeNode {
+	Point3f center; // center point of cube
+	float radius; // cube radius
+	enum OctTreeNodeType type;
+	union {
+		Color3f color;
+		struct {
+			struct OctTreeNode* n0;
+			OctTreeNode* n1;
+			OctTreeNode* n2;
+			OctTreeNode* n3;
+			OctTreeNode* n4;
+			OctTreeNode* n5;
+			OctTreeNode* n6;
+			OctTreeNode* n7;
+		};
+	};
+};
+
+Point3f camera_pos = {0.89,-1.48,-0.25};
+Point3f camera_target = {0.0,1.0,0.0};
 Point3f up = {0., 0., 1.};
-float horizontal_angle = 0.0f;
-float vertical_angle = 0.0f;
+float horizontal_angle = 2.0;
+float vertical_angle = 0.0;
+
+OctTreeNode * mainOctTree;
 
 static void error_callback(int error, const char* description);
 static void key_callback(GLFWwindow* windows, int key, int scancode, int action, int mods);
@@ -64,9 +111,12 @@ int main(void)
 
 	//**************************** generowanie przykładowych piksli
 	initOctTree();
-	int height = 200;
-	int width = 200;
-	float piksele[height*width*3];
+	camera_target = (Point3f) { cos(horizontal_angle) * cos(vertical_angle)
+							  , sin(horizontal_angle) * cos(vertical_angle)
+							  , sin(vertical_angle)};
+	const int height = 200;
+	const int width = 200;
+	float * piksele = (float*)malloc(height*width*3*sizeof(float));
 	/*for (int y = 0; y < height; y++) for (int x = 0; x < width; x++)*/
 	/*{*/
 		/*int index_base = (y * width + x) * 3;*/
@@ -87,17 +137,18 @@ int main(void)
 			piksele[i] = 0.0;
 		captureOctTree(camera_pos, camera_target, up, width, height, piksele);
 
+		//Rysowanie ramki na około viewportu
 		for (int i = 0; i < width; i++)
 		{
-			piksele[(0 * width + i) * 3 + 1] = 1.;
-			piksele[(0 * width + i) * 3 + 2] = 1.;
-			piksele[((height - 1) * width + i) * 3 + 2] = 1.;
+			piksele[ARR_IDX(i, 0, 1)] = 1.;
+			piksele[ARR_IDX(i, 0, 2)] = 1.;
+			piksele[ARR_IDX(i, height - 1, 2)] = 1.;
 		}
 		for (int i = 0; i < height; i++)
 		{
-			piksele[(height * i + 0) * 3 + 1] = 1.;
-			piksele[(height * i + 0) * 3 + 2] = 1.;
-			piksele[(height * i + (width-1)) * 3 + 2] = 1.;
+			piksele[ARR_IDX(0, i, 1)] = 1.;
+			piksele[ARR_IDX(0, i, 2)] = 1.;
+			piksele[ARR_IDX(width-1, i, 2)] = 1.;
 		}
 		// ostateczne rysowanie piksli powinno używać jakiejś innej techniki
 		glDrawPixels(width, height, GL_RGB, GL_FLOAT, piksele);
@@ -113,11 +164,6 @@ int main(void)
 
 	glfwTerminate();
 	return 0;
-}
-
-void error_callback(int error, const char* description)
-{
-	fprintf(stderr, "(%d) %s\n", error, description);
 }
 
 void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods)
@@ -153,15 +199,15 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
 				vertical_angle -= 0.1;
 				break;
 			case GLFW_KEY_L:
-				horizontal_angle += 0.1;
+				horizontal_angle -= 0.1;
 				break;
 			case GLFW_KEY_J:
-				horizontal_angle -= 0.1;
+				horizontal_angle += 0.1;
 				break;
 			/*default:*/
 		}
-		camera_target = (Point3f) { sin(horizontal_angle) * cos(vertical_angle)
-								  , cos(horizontal_angle) * cos(vertical_angle)
+		camera_target = (Point3f) { cos(horizontal_angle) * cos(vertical_angle)
+								  , sin(horizontal_angle) * cos(vertical_angle)
 								  , sin(vertical_angle)};
 	}
 	printf("Camera position is: (%f, %f %f)\n", camera_pos.x, camera_pos.y, camera_pos.z);
@@ -169,32 +215,9 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
 	printf("Camera target is: (%f, %f %f)\n", camera_target.x, camera_target.y, camera_target.z);
 }
 
-enum OctTreeNodeType {Empty, Solid, Partial}; // TODO owrapować to ładnie, żeby nie robić syfu w top lvl
-
-typedef struct OctTreeNode OctTreeNode;
-
-struct OctTreeNode {
-	Point3f center; // center point of cube
-	float radius; // cube radius
-	enum OctTreeNodeType type;
-	union {
-		Color3f color;
-		struct {
-			struct OctTreeNode* n0;
-			OctTreeNode* n1;
-			OctTreeNode* n2;
-			OctTreeNode* n3;
-			OctTreeNode* n4;
-			OctTreeNode* n5;
-			OctTreeNode* n6;
-			OctTreeNode* n7;
-		} children;
-	} value;
-};
-
-int cmpFloat(const void * a, const void * b)
+void error_callback(int error, const char* description)
 {
-	return (*(float*)a - *(float*)b);
+	fprintf(stderr, "(%d) %s\n", error, description);
 }
 
 // returns 0 if not found any objects
@@ -207,12 +230,12 @@ int ray_cast_oct_tree(Point3f origin, Point3f direction, OctTreeNode * tree, Col
 	if (tree->type == Empty)
 		return 0;
 	if (tree->type == Solid) {
-		*color = tree->value.color;
+		*color = tree->color;
 		return 1;
 	}
 	// if (tree->type == Partial)
 
-	Point3f local = { origin.x - tree->center.x, origin.y - tree->center.y, origin.z - tree->center.z };
+	Point3f local = vectMulScalar(origin, tree->center, -1);
 
 	// Check if we intersect 0-planes, and if so at what distance from origin
 	float intersection_dist[5];
@@ -294,28 +317,28 @@ int ray_cast_oct_tree(Point3f origin, Point3f direction, OctTreeNode * tree, Col
 				if (half_point.y >= 0) // 0 1
 				{
 					if (half_point.x >= 0)
-						t = tree->value.children.n1;
+						t = tree->n1;
 					else
-						t = tree->value.children.n0;
+						t = tree->n0;
 
 				} else { // 2 3
 					if (half_point.x >= 0)
-						t = tree->value.children.n3;
+						t = tree->n3;
 					else
-						t = tree->value.children.n2;
+						t = tree->n2;
 				}
 			} else { // 4 5 6 7
 				if (half_point.y >= 0) // 4 5
 				{
 					if (half_point.x >= 0)
-						t = tree->value.children.n5;
+						t = tree->n5;
 					else
-						t = tree->value.children.n4;
+						t = tree->n4;
 				} else { // 6 7
 					if (half_point.x >= 0)
-						t = tree->value.children.n7;
+						t = tree->n7;
 					else
-						t = tree->value.children.n6;
+						t = tree->n6;
 				}
 			}
 			int ret = ray_cast_oct_tree(origin, direction, t, color);
@@ -324,8 +347,6 @@ int ray_cast_oct_tree(Point3f origin, Point3f direction, OctTreeNode * tree, Col
 	}
 	return 0;
 }
-
-OctTreeNode * mainOctTree;
 
 void initOctTree()
 {
@@ -338,78 +359,70 @@ void initOctTree()
 	tmp->center = (Point3f){-.5, .5, .5};
 	tmp->radius = .5;
 	tmp->type = Solid;
-	tmp->value.color = (Color3f) {0.0, 0.0, 1.0};
-	mainOctTree->value.children.n0 = tmp;
+	tmp->color = (Color3f) {0.0, 0.0, 1.0};
+	mainOctTree->n0 = tmp;
 	tmp = (OctTreeNode*)malloc(sizeof(OctTreeNode));
 	tmp->center = (Point3f){.5, .5, .5};
 	tmp->radius = .5;
 	tmp->type = Solid;
-	tmp->value.color = (Color3f) {1.0, 0.0, 0.0};
-	mainOctTree->value.children.n1 = tmp;
+	tmp->color = (Color3f) {1.0, 0.0, 0.0};
+	mainOctTree->n1 = tmp;
 	tmp = (OctTreeNode*)malloc(sizeof(OctTreeNode));
 	tmp->center = (Point3f){-.5, -.5, .5};
 	tmp->radius = .5;
 	tmp->type = Solid;
-	tmp->value.color = (Color3f) {1.0, 0.0, 1.0};
-	mainOctTree->value.children.n2 = tmp;
+	tmp->color = (Color3f) {1.0, 0.0, 1.0};
+	mainOctTree->n2 = tmp;
 	tmp = (OctTreeNode*)malloc(sizeof(OctTreeNode));
 	tmp->center = (Point3f){.5, -.5, .5};
 	tmp->radius = .5;
 	tmp->type = Empty;
-	mainOctTree->value.children.n3 = tmp;
+	mainOctTree->n3 = tmp;
 	tmp = (OctTreeNode*)malloc(sizeof(OctTreeNode));
 	tmp->center = (Point3f){-.5, .5, -.5};
 	tmp->radius = .5;
 	tmp->type = Solid;
-	tmp->value.color = (Color3f) {0.0, 1.0, 0.0};
-	mainOctTree->value.children.n4 = tmp;
+	tmp->color = (Color3f) {0.0, 1.0, 0.0};
+	mainOctTree->n4 = tmp;
 	tmp = (OctTreeNode*)malloc(sizeof(OctTreeNode));
 	tmp->center = (Point3f){.5, .5, -.5};
 	tmp->radius = .5;
 	tmp->type = Empty;
-	mainOctTree->value.children.n5 = tmp;
+	mainOctTree->n5 = tmp;
 	tmp = (OctTreeNode*)malloc(sizeof(OctTreeNode));
 	tmp->center = (Point3f){-.5, -.5, -.5};
 	tmp->radius = .5;
 	tmp->type = Empty;
-	/*tmp->value.color = (Color3f) {1.0, 1.0, 0.0};*/
-	mainOctTree->value.children.n6 = tmp;
+	/*tmp->color = (Color3f) {1.0, 1.0, 0.0};*/
+	mainOctTree->n6 = tmp;
 	tmp = (OctTreeNode*)malloc(sizeof(OctTreeNode));
 	tmp->center = (Point3f){.5, -.5, -.5};
 	tmp->radius = .5;
 	tmp->type = Empty;
-	mainOctTree->value.children.n7 = tmp;
+	mainOctTree->n7 = tmp;
 }
 
 void captureOctTree(Point3f camera, Point3f target, Point3f up, int width, int height, float* data)
 {
 	//normalize vectors
-	float target_len = sqrt(target.x*target.x + target.y*target.y + target.z*target.z);
-	target.x = target.x / target_len;
-	target.y = target.y / target_len;
-	target.z = target.z / target_len;
-	float up_len = sqrt(up.x*up.x + up.y*up.y + up.z*up.z);
-	up.x = up.x / up_len;
-	up.y = up.y / up_len;
-	up.z = up.z / up_len;
+	target = vectNormalize(target);
+	up = vectNormalize(up);
 
 	Point3f right = vectMul(target, up);
-	Point3f bottom_left_vec = {target.x - up.x/2 - right.x/2, target.y - up.y/2 - right.y/2, target.z - up.z/2 - right.z/2};
+	Point3f bottom_left_vec = vectSum(target, vectDiv(up, -2), vectDiv(right, -2));
 
-	Point3f dright = {right.x / width, right.y / width, right.z / width};
-	Point3f dup = { up.x / height, up.y / height, up.z / height};
+	Point3f dright = vectDiv(right, width);
+	Point3f dup = vectDiv(up, height);
 
 	for (int y = 0; y < height; y++) for (int x = 0; x < width; x++)
 	{
 		Color3f color = {0.,0.,0.};
 		Point3f temp_target =
-			{ bottom_left_vec.x + dright.x * x + dup.x * y
-			, bottom_left_vec.y + dright.y * x + dup.y * y
-			, bottom_left_vec.z + dright.z * x + dup.z * y};
+			vectMulScalar(vectMulScalar(bottom_left_vec, dup, y), dright, x);
 		ray_cast_oct_tree(camera, temp_target, mainOctTree, &color);
-		data[(y * width + x)*3 + 0] = color.r;
-		data[(y * width + x)*3 + 1] = color.g;
-		data[(y * width + x)*3 + 2] = color.b;
+		data[ARR_IDX(x,y,0)] = color.r;
+		data[ARR_IDX(x,y,1)] = color.g;
+		data[ARR_IDX(x,y,2)] = color.b;
 	}
 
 }
