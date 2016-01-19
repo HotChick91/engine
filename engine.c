@@ -39,7 +39,7 @@ Point3f vectNormalize(Point3f a)
 
 int cmpFloat(const void * a, const void * b)
 {
-	return (*(float*)a - *(float*)b);
+	return *(float*)a < *(float*)b ? -1 : 1;
 }
 
 typedef struct Color3f {
@@ -170,7 +170,7 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
 {
 	if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
 		glfwSetWindowShouldClose(window, GL_TRUE);
-	if (action == GLFW_PRESS)
+	if (action == GLFW_PRESS || action == GLFW_REPEAT)
 	{
 		Point3f right = vectMul(camera_target, up);
 		switch (key) {
@@ -269,12 +269,12 @@ int ray_cast_oct_tree(Point3f origin, Point3f direction, OctTreeNode * tree, Col
 		Point3f end = vectMulScalar(local, direction, intersection_dist[segment_num+1]);
 
 		int found = 0;
-		if (abs(begin.x) < tree->radius
+		if ((abs(begin.x) < tree->radius
 		 && abs(begin.y) < tree->radius
-		 && abs(begin.z) < tree->radius
-		 || abs(end.x) < tree->radius
+		 && abs(begin.z) < tree->radius)
+		 || (abs(end.x) < tree->radius
 		 && abs(end.y) < tree->radius
-		 && abs(end.z) < tree->radius)
+		 && abs(end.z) < tree->radius))
 		{
 			found = 1;
 		}
@@ -284,27 +284,27 @@ int ray_cast_oct_tree(Point3f origin, Point3f direction, OctTreeNode * tree, Col
 		if(!found && /*abs(local.x) > 1 &&*/ local.x * direction.x < 0) {
 			float dist = -1 * (local.x-tree->radius) / direction.x;
 			Point3f intersect = vectMulScalar(local, direction, dist);
-			if (intersect.x <= tree->radius //TODO uwaga na błędy zaokrągleń
-			 && intersect.y <= tree->radius
-			 && intersect.z <= tree->radius)
+			if (abs(intersect.x) <= tree->radius //TODO uwaga na błędy zaokrągleń
+			 && abs(intersect.y) <= tree->radius
+			 && abs(intersect.z) <= tree->radius)
 				found = 1;
 		}
 		// check Y = 1 plane
 		if(!found && /*abs(local.y) > 1 &&*/ local.y * direction.y < 0) {
 			float dist = -1 * (local.y-tree->radius) / direction.y;
 			Point3f intersect = vectMulScalar(local, direction, dist);
-			if (intersect.x <= tree->radius
-			 && intersect.y <= tree->radius
-			 && intersect.z <= tree->radius)
+			if (abs(intersect.x) <= tree->radius
+			 && abs(intersect.y) <= tree->radius
+			 && abs(intersect.z) <= tree->radius)
 				found = 1;
 		}
 		// check Z = 1 plane
 		if(!found && /*abs(local.z) > 1 &&*/ local.z * direction.z < 0) {
 			float dist = -1 * (local.z-tree->radius) / direction.z;
 			Point3f intersect = vectMulScalar(local, direction, dist);
-			if (intersect.x <= tree->radius
-			 && intersect.y <= tree->radius
-			 && intersect.z <= tree->radius)
+			if (abs(intersect.x) <= tree->radius
+			 && abs(intersect.y) <= tree->radius
+			 && abs(intersect.z) <= tree->radius)
 				found = 1;
 		}
 
@@ -344,6 +344,9 @@ int ray_cast_oct_tree(Point3f origin, Point3f direction, OctTreeNode * tree, Col
 			int ret = ray_cast_oct_tree(origin, direction, t, color);
 			if (ret) return 1;
 		}
+		/*else {*/ //czy to nie sprawi jakichś problemów?
+			/*break;*/
+		/*}*/
 	}
 	return 0;
 }

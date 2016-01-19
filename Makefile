@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -lglfw -lGL -lm -g -std=c11
+CFLAGS = -lglfw -lGL -lm -g -std=c11 -Wall
 
 ALL: engine
 
