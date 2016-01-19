@@ -37,6 +37,42 @@ Point3f vectNormalize(Point3f a)
 	return vectDiv(a, len);
 }
 
+// check intersection of vector [origin; direction] with plane limited
+// by value and versor plane (1 on planeth coordinate, 0 on the rest)
+int vectPlaneIntersection(Point3f origin, Point3f direction, int plane, Point3f value)
+{
+    float dist;
+    if (plane == 0) // X = value plane
+    {
+        if ((origin.x < value.x && direction.x <= 0)
+         || (origin.x > value.x && direction.x >= 0))
+            return 0;
+        dist = (value.x - origin.x) / direction.x;
+    } else if (plane == 1) // Y = value plane
+    {
+        if ((origin.y < value.y && direction.y <= 0)
+         || (origin.y > value.y && direction.y >= 0))
+            return 0;
+        dist = (value.y - origin.y) / direction.y;
+    } else if (plane == 2) // Z = value plane
+    {
+        if ((origin.z < value.z && direction.z <= 0)
+         || (origin.z > value.z && direction.z >= 0))
+            return 0;
+        dist = (value.z - origin.z) / direction.z;
+    } else {
+        return 0;
+    }
+
+    Point3f intersect = vectMulScalar(origin, direction, dist);
+
+    if (abs(intersect.x) <= value.x
+     && abs(intersect.y) <= value.y
+     && abs(intersect.z) <= value.z)
+        return 1;
+    return 0;
+}
+
 int cmpFloat(const void * a, const void * b)
 {
 	return *(float*)a < *(float*)b ? -1 : 1;
@@ -193,16 +229,16 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
 				camera_pos = vectMulScalar(camera_pos, up, 0.05);
 				break;
 			case GLFW_KEY_I:
-				vertical_angle += 0.1;
+				vertical_angle += 0.05;
 				break;
 			case GLFW_KEY_K:
-				vertical_angle -= 0.1;
+				vertical_angle -= 0.05;
 				break;
 			case GLFW_KEY_L:
-				horizontal_angle -= 0.1;
+				horizontal_angle -= 0.05;
 				break;
 			case GLFW_KEY_J:
-				horizontal_angle += 0.1;
+				horizontal_angle += 0.05;
 				break;
 			/*default:*/
 		}
@@ -269,43 +305,34 @@ int ray_cast_oct_tree(Point3f origin, Point3f direction, OctTreeNode * tree, Col
 		Point3f end = vectMulScalar(local, direction, intersection_dist[segment_num+1]);
 
 		int found = 0;
-		if ((abs(begin.x) < tree->radius
-		 && abs(begin.y) < tree->radius
-		 && abs(begin.z) < tree->radius)
-		 || (abs(end.x) < tree->radius
-		 && abs(end.y) < tree->radius
-		 && abs(end.z) < tree->radius))
-		{
-			found = 1;
-		}
+		/*if ((abs(begin.x) < tree->radius*/
+		 /*&& abs(begin.y) < tree->radius*/
+		 /*&& abs(begin.z) < tree->radius)*/
+		 /*|| (abs(end.x) < tree->radius*/
+		 /*&& abs(end.y) < tree->radius*/
+		 /*&& abs(end.z) < tree->radius))*/
+		/*{*/
+			/*found = 1;*/
+		/*}*/
 		// if segments ends are outside cube we will test intersect points with cube faces
+		if(!found){
+            found = vectPlaneIntersection(local, direction, 0, (Point3f){0, tree->radius, tree->radius});
+        }
+		if(!found){
+            found = vectPlaneIntersection(local, direction, 1, (Point3f){tree->radius, 0, tree->radius});
+        }
+		if(!found){
+            found = vectPlaneIntersection(local, direction, 2, (Point3f){tree->radius, tree->radius, 0});
+		}
 
-		// check X = 1 plane
-		if(!found && /*abs(local.x) > 1 &&*/ local.x * direction.x < 0) {
-			float dist = -1 * (local.x-tree->radius) / direction.x;
-			Point3f intersect = vectMulScalar(local, direction, dist);
-			if (abs(intersect.x) <= tree->radius //TODO uwaga na błędy zaokrągleń
-			 && abs(intersect.y) <= tree->radius
-			 && abs(intersect.z) <= tree->radius)
-				found = 1;
-		}
-		// check Y = 1 plane
-		if(!found && /*abs(local.y) > 1 &&*/ local.y * direction.y < 0) {
-			float dist = -1 * (local.y-tree->radius) / direction.y;
-			Point3f intersect = vectMulScalar(local, direction, dist);
-			if (abs(intersect.x) <= tree->radius
-			 && abs(intersect.y) <= tree->radius
-			 && abs(intersect.z) <= tree->radius)
-				found = 1;
-		}
-		// check Z = 1 plane
-		if(!found && /*abs(local.z) > 1 &&*/ local.z * direction.z < 0) {
-			float dist = -1 * (local.z-tree->radius) / direction.z;
-			Point3f intersect = vectMulScalar(local, direction, dist);
-			if (abs(intersect.x) <= tree->radius
-			 && abs(intersect.y) <= tree->radius
-			 && abs(intersect.z) <= tree->radius)
-				found = 1;
+		if(!found){
+            found = vectPlaneIntersection(local, direction, 0, (Point3f){tree->radius, tree->radius, tree->radius});
+        }
+		if(!found){
+            found = vectPlaneIntersection(local, direction, 1, (Point3f){tree->radius, tree->radius, tree->radius});
+        }
+		if(!found){
+            found = vectPlaneIntersection(local, direction, 2, (Point3f){tree->radius, tree->radius, tree->radius});
 		}
 
 		if (found)
@@ -320,7 +347,6 @@ int ray_cast_oct_tree(Point3f origin, Point3f direction, OctTreeNode * tree, Col
 						t = tree->n1;
 					else
 						t = tree->n0;
-
 				} else { // 2 3
 					if (half_point.x >= 0)
 						t = tree->n3;
