@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <math.h>
 #include <stdlib.h>
+#include <time.h>
 
 #define ARR_IDX(x, y, col) (((y) * width + (x)) * 3) + (col)
 
@@ -171,7 +172,15 @@ int main(void)
 		/* Render here */
 		for (int i = 0; i < height * width * 3; i++)
 			piksele[i] = 0.0;
+
+		clock_t start = clock();
 		captureOctTree(camera_pos, camera_target, up, width, height, piksele);
+		clock_t end = clock();
+
+		// show render time in window title
+		char title[16];
+		sprintf(title, "%d ms", (int)((end - start) / (CLOCKS_PER_SEC / 1000)));
+		glfwSetWindowTitle(window, title);
 
 		//Rysowanie ramki na około viewportu
 		for (int i = 0; i < width; i++)
