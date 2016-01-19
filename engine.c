@@ -427,13 +427,13 @@ void initOctTree()
 	tmp->radius = .5;
 	tmp->type = Empty;
 	mainOctTree->n5 = tmp;
-	tmp = (OctTreeNode*)malloc(sizeof(OctTreeNode));
+	tmp = malloc(sizeof(*tmp));
 	tmp->center = (Point3f){-.5, -.5, -.5};
 	tmp->radius = .5;
 	tmp->type = Empty;
 	/*tmp->color = (Color3f) {1.0, 1.0, 0.0};*/
 	mainOctTree->n6 = tmp;
-	tmp = (OctTreeNode*)malloc(sizeof(OctTreeNode));
+	tmp = malloc(sizeof(*tmp));
 	tmp->center = (Point3f){.5, -.5, -.5};
 	tmp->radius = .5;
 	tmp->type = Empty;
