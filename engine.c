@@ -302,6 +302,9 @@ void ray_cast_oct_tree(Point3f origin, Point3f direction, OctTreeNode * tree, Co
 		return;
 	}
 
+	// to prevent bad things that potentially could happen due to numerical errors
+	clamp(local, tree->radius);
+
 	float xdist = MAX((tree->radius - local.x) / direction.x, (-tree->radius - local.x) / direction.x);
 	float ydist = MAX((tree->radius - local.y) / direction.y, (-tree->radius - local.y) / direction.y);
 	float zdist = MAX((tree->radius - local.z) / direction.z, (-tree->radius - local.z) / direction.z);
@@ -309,22 +312,17 @@ void ray_cast_oct_tree(Point3f origin, Point3f direction, OctTreeNode * tree, Co
 	if (xdist < ydist && xdist < zdist) {
 		new_local = vectMulScalar(local, direction, xdist);
 		dx = direction.x > 0 ? 1 : -1;
-		new_local.x = dx * tree->radius;
 	} else if (ydist < zdist) {
 		new_local = vectMulScalar(local, direction, ydist);
 		dy = direction.y > 0 ? 1 : -1;
-		new_local.y = dy * tree->radius;
 	} else {
 		new_local = vectMulScalar(local, direction, zdist);
 		dz = direction.z > 0 ? 1 : -1;
-		new_local.z = dz * tree->radius;
 	}
-	clamp(new_local, tree->radius);
 
 	while (tree->parent != NULL) {
 		OctTreeNode *sibling = maybeSibling(tree, dx, dy, dz);
 		if (sibling != NULL) {
-			// hopefully new_origin is valid here (ie, exactly on the face)
 			ray_cast_oct_tree(vectMulScalar(new_local, tree->center, 1), direction, sibling, color);
 			return;
 		}
