@@ -90,6 +90,7 @@ enum OctTreeNodeType {Empty, Solid, Partial}; // TODO owrapować to ładnie, że
 typedef struct OctTreeNode OctTreeNode;
 
 struct OctTreeNode {
+	int x, y, z;
 	OctTreeNode *parent;
 	Point3f center; // center point of cube
 	float radius; // cube radius
@@ -100,7 +101,7 @@ struct OctTreeNode {
 	};
 };
 
-Point3f camera_pos = {0.89,-1.48,-0.25};
+Point3f camera_pos = {0.89,-0.98,-0.25};
 Point3f camera_target = {0.0,1.0,0.0};
 Point3f up = {0., 0., 1.};
 float horizontal_angle = 2.0;
@@ -278,8 +279,12 @@ void clamp(Point3f p, float radius) {
 
 OctTreeNode *maybeSibling(OctTreeNode *tree, int dx, int dy, int dz)
 {
-	// XXX: write this thing
-	return NULL;
+	int nx = tree->x + dx;
+	int ny = tree->y + dy;
+	int nz = tree->z + dz;
+	if ((nx | ny | nz) & (~1))
+		return NULL;
+	return tree->parent->nodes[nx][ny][nz];
 }
 
 void ray_cast_oct_tree(Point3f origin, Point3f direction, OctTreeNode * tree, Color3f * color)
@@ -293,7 +298,7 @@ void ray_cast_oct_tree(Point3f origin, Point3f direction, OctTreeNode * tree, Co
 	Point3f new_local;
 
 	if (tree->type == Partial) {
-		ray_cast_oct_tree(origin, direction, tree->nodes[local.x < 0][local.y < 0][local.z < 0], color);
+		ray_cast_oct_tree(origin, direction, tree->nodes[local.x > 0][local.y > 0][local.z > 0], color);
 		return;
 	}
 
@@ -343,53 +348,77 @@ void initOctTree()
 	tmp->radius = .5;
 	tmp->type = Solid;
 	tmp->color = (Color3f) {0.0, 0.0, 1.0};
-	mainOctTree->nodes[0][1][1] = tmp;
+	tmp->x = 0;
+	tmp->y = 1;
+	tmp->z = 1;
+	mainOctTree->nodes[tmp->x][tmp->y][tmp->z] = tmp;
 	tmp = malloc(sizeof(*tmp));
 	tmp->parent = mainOctTree;
 	tmp->center = (Point3f){.5, .5, .5};
 	tmp->radius = .5;
 	tmp->type = Solid;
 	tmp->color = (Color3f) {1.0, 0.0, 0.0};
-	mainOctTree->nodes[1][1][1] = tmp;
+	tmp->x = 1;
+	tmp->y = 1;
+	tmp->z = 1;
+	mainOctTree->nodes[tmp->x][tmp->y][tmp->z] = tmp;
 	tmp = malloc(sizeof(*tmp));
 	tmp->parent = mainOctTree;
 	tmp->center = (Point3f){-.5, -.5, .5};
 	tmp->radius = .5;
 	tmp->type = Solid;
 	tmp->color = (Color3f) {1.0, 0.0, 1.0};
-	mainOctTree->nodes[0][0][1] = tmp;
+	tmp->x = 0;
+	tmp->y = 0;
+	tmp->z = 1;
+	mainOctTree->nodes[tmp->x][tmp->y][tmp->z] = tmp;
 	tmp = malloc(sizeof(*tmp));
 	tmp->parent = mainOctTree;
 	tmp->center = (Point3f){.5, -.5, .5};
 	tmp->radius = .5;
 	tmp->type = Empty;
-	mainOctTree->nodes[1][0][1] = tmp;
+	tmp->x = 1;
+	tmp->y = 0;
+	tmp->z = 1;
+	mainOctTree->nodes[tmp->x][tmp->y][tmp->z] = tmp;
 	tmp = malloc(sizeof(*tmp));
 	tmp->parent = mainOctTree;
 	tmp->center = (Point3f){-.5, .5, -.5};
 	tmp->radius = .5;
 	tmp->type = Solid;
 	tmp->color = (Color3f) {0.0, 1.0, 0.0};
-	mainOctTree->nodes[0][1][0] = tmp;
+	tmp->x = 0;
+	tmp->y = 1;
+	tmp->z = 0;
+	mainOctTree->nodes[tmp->x][tmp->y][tmp->z] = tmp;
 	tmp = malloc(sizeof(*tmp));
 	tmp->parent = mainOctTree;
 	tmp->center = (Point3f){.5, .5, -.5};
 	tmp->radius = .5;
 	tmp->type = Empty;
-	mainOctTree->nodes[1][1][0] = tmp;
+	tmp->x = 1;
+	tmp->y = 1;
+	tmp->z = 0;
+	mainOctTree->nodes[tmp->x][tmp->y][tmp->z] = tmp;
 	tmp = malloc(sizeof(*tmp));
 	tmp->parent = mainOctTree;
 	tmp->center = (Point3f){-.5, -.5, -.5};
 	tmp->radius = .5;
 	tmp->type = Empty;
 	/*tmp->color = (Color3f) {1.0, 1.0, 0.0};*/
-	mainOctTree->nodes[0][0][0] = tmp;
+	tmp->x = 0;
+	tmp->y = 0;
+	tmp->z = 0;
+	mainOctTree->nodes[tmp->x][tmp->y][tmp->z] = tmp;
 	tmp = malloc(sizeof(*tmp));
 	tmp->parent = mainOctTree;
 	tmp->center = (Point3f){.5, -.5, -.5};
 	tmp->radius = .5;
 	tmp->type = Empty;
-	mainOctTree->nodes[1][0][0] = tmp;
+	tmp->x = 1;
+	tmp->y = 0;
+	tmp->z = 0;
+	mainOctTree->nodes[tmp->x][tmp->y][tmp->z] = tmp;
 }
 
 void captureOctTree(Point3f camera, Point3f target, Point3f up, int width, int height, float* data)
