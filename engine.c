@@ -90,21 +90,13 @@ enum OctTreeNodeType {Empty, Solid, Partial}; // TODO owrapować to ładnie, że
 typedef struct OctTreeNode OctTreeNode;
 
 struct OctTreeNode {
+	OctTreeNode *parent;
 	Point3f center; // center point of cube
 	float radius; // cube radius
 	enum OctTreeNodeType type;
 	union {
 		Color3f color;
-		struct {
-			OctTreeNode* n0;
-			OctTreeNode* n1;
-			OctTreeNode* n2;
-			OctTreeNode* n3;
-			OctTreeNode* n4;
-			OctTreeNode* n5;
-			OctTreeNode* n6;
-			OctTreeNode* n7;
-		};
+		OctTreeNode *nodes[2][2][2];
 	};
 };
 
@@ -265,179 +257,139 @@ void error_callback(int error, const char* description)
 	fprintf(stderr, "(%d) %s\n", error, description);
 }
 
-// returns 0 if not found any objects
-// returns 1 if object found, color is filled with color information
-int ray_cast_oct_tree(Point3f origin, Point3f direction, OctTreeNode * tree, Color3f * color)
-{
-	// TODO check if origin inside tree?
-	// TODO ładnie się wywalić jak tree == Null
+float MAX(float a, float b) {
+	return a > b ? a : b;
+}
 
-	if (tree->type == Empty)
-		return 0;
+void clamp(Point3f p, float radius) {
+	if (p.x < -radius)
+		p.x = -radius;
+	else if (p.x > radius)
+		p.x = radius;
+	if (p.y < -radius)
+		p.y = -radius;
+	else if (p.y > radius)
+		p.y = radius;
+	if (p.z < -radius)
+		p.z = -radius;
+	else if (p.z > radius)
+		p.z = radius;
+}
+
+OctTreeNode *maybeSibling(OctTreeNode *tree, int dx, int dy, int dz)
+{
+	// XXX: write this thing
+	return NULL;
+}
+
+void ray_cast_oct_tree(Point3f origin, Point3f direction, OctTreeNode * tree, Color3f * color)
+{
 	if (tree->type == Solid) {
 		*color = tree->color;
-		return 1;
+		return;
 	}
-	// if (tree->type == Partial)
 
 	Point3f local = vectMulScalar(origin, tree->center, -1);
+	Point3f new_local;
 
-	// Check if we intersect 0-planes, and if so at what distance from origin
-	float intersection_dist[5];
-	intersection_dist[0] = 0;
-	int intersection_size = 1;
-
-	if (local.z * direction.z < 0) {
-		intersection_dist[intersection_size] = -1 * local.z / direction.z;
-		intersection_size++;
-	}
-	if (local.y * direction.y < 0) {
-		intersection_dist[intersection_size] = -1 * local.y / direction.y;
-		intersection_size++;
-	}
-	if (local.x * direction.x < 0) {
-		intersection_dist[intersection_size] = -1 * local.x / direction.x;
-		intersection_size++;
+	if (tree->type == Partial) {
+		ray_cast_oct_tree(origin, direction, tree->nodes[local.x < 0][local.y < 0][local.z < 0], color);
+		return;
 	}
 
-	// sortowanie
-	qsort(intersection_dist, intersection_size, sizeof(*intersection_dist), cmpFloat);
-	// aditional point for last intersection check
-	intersection_dist[intersection_size] = intersection_dist[intersection_size-1] + 1.;
-	intersection_size++;
+	float xdist = MAX((tree->radius - local.x) / direction.x, (-tree->radius - local.x) / direction.x);
+	float ydist = MAX((tree->radius - local.y) / direction.y, (-tree->radius - local.y) / direction.y);
+	float zdist = MAX((tree->radius - local.z) / direction.z, (-tree->radius - local.z) / direction.z);
+	int dx = 0, dy = 0, dz = 0;
+	if (xdist < ydist && xdist < zdist) {
+		new_local = vectMulScalar(local, direction, xdist);
+		dx = direction.x > 0 ? 1 : -1;
+		new_local.x = dx * tree->radius;
+	} else if (ydist < zdist) {
+		new_local = vectMulScalar(local, direction, ydist);
+		dy = direction.y > 0 ? 1 : -1;
+		new_local.y = dy * tree->radius;
+	} else {
+		new_local = vectMulScalar(local, direction, zdist);
+		dz = direction.z > 0 ? 1 : -1;
+		new_local.z = dz * tree->radius;
+	}
+	clamp(new_local, tree->radius);
 
-	// we need to check each specific segment if it intersects with cube
-	for (int segment_num = 0; segment_num < intersection_size - 1; segment_num++)
-	{
-		// if segments begins/ends inside cube then it intersects
-		Point3f begin = vectMulScalar(local, direction, intersection_dist[segment_num]);
-		Point3f end = vectMulScalar(local, direction, intersection_dist[segment_num+1]);
-
-		int found = 0;
-		/*if ((abs(begin.x) < tree->radius*/
-		 /*&& abs(begin.y) < tree->radius*/
-		 /*&& abs(begin.z) < tree->radius)*/
-		 /*|| (abs(end.x) < tree->radius*/
-		 /*&& abs(end.y) < tree->radius*/
-		 /*&& abs(end.z) < tree->radius))*/
-		/*{*/
-			/*found = 1;*/
-		/*}*/
-		// if segments ends are outside cube we will test intersect points with cube faces
-		if(!found){
-            found = vectPlaneIntersection(local, direction, 0, (Point3f){0, tree->radius, tree->radius});
-        }
-		if(!found){
-            found = vectPlaneIntersection(local, direction, 1, (Point3f){tree->radius, 0, tree->radius});
-        }
-		if(!found){
-            found = vectPlaneIntersection(local, direction, 2, (Point3f){tree->radius, tree->radius, 0});
+	while (tree->parent != NULL) {
+		OctTreeNode *sibling = maybeSibling(tree, dx, dy, dz);
+		if (sibling != NULL) {
+			// hopefully new_origin is valid here (ie, exactly on the face)
+			ray_cast_oct_tree(vectMulScalar(new_local, tree->center, 1), direction, sibling, color);
+			return;
 		}
-
-		if(!found){
-            found = vectPlaneIntersection(local, direction, 0, (Point3f){tree->radius, tree->radius, tree->radius});
-        }
-		if(!found){
-            found = vectPlaneIntersection(local, direction, 1, (Point3f){tree->radius, tree->radius, tree->radius});
-        }
-		if(!found){
-            found = vectPlaneIntersection(local, direction, 2, (Point3f){tree->radius, tree->radius, tree->radius});
-		}
-
-		if (found)
-		{
-			OctTreeNode * t;
-			Point3f half_point = {(begin.x + end.x)/2,(begin.y + end.y)/2,(begin.z + end.z)/2};
-			if (half_point.z >= 0) // 0 1 2 3
-			{
-				if (half_point.y >= 0) // 0 1
-				{
-					if (half_point.x >= 0)
-						t = tree->n1;
-					else
-						t = tree->n0;
-				} else { // 2 3
-					if (half_point.x >= 0)
-						t = tree->n3;
-					else
-						t = tree->n2;
-				}
-			} else { // 4 5 6 7
-				if (half_point.y >= 0) // 4 5
-				{
-					if (half_point.x >= 0)
-						t = tree->n5;
-					else
-						t = tree->n4;
-				} else { // 6 7
-					if (half_point.x >= 0)
-						t = tree->n7;
-					else
-						t = tree->n6;
-				}
-			}
-			int ret = ray_cast_oct_tree(origin, direction, t, color);
-			if (ret) return 1;
-		}
-		/*else {*/ //czy to nie sprawi jakichś problemów?
-			/*break;*/
-		/*}*/
+		tree = tree->parent;
 	}
-	return 0;
+
+	color->r = color->g = color->b = 0;
 }
 
 void initOctTree()
 {
 	mainOctTree = malloc(sizeof(*mainOctTree));
+	mainOctTree->parent = NULL;
 	mainOctTree->center = (Point3f){0.,0.,0.};
 	mainOctTree->radius = 1.;
 	mainOctTree->type = Partial;
 	OctTreeNode* tmp;
 	tmp = malloc(sizeof(*tmp));
+	tmp->parent = mainOctTree;
 	tmp->center = (Point3f){-.5, .5, .5};
 	tmp->radius = .5;
 	tmp->type = Solid;
 	tmp->color = (Color3f) {0.0, 0.0, 1.0};
-	mainOctTree->n0 = tmp;
+	mainOctTree->nodes[0][1][1] = tmp;
 	tmp = malloc(sizeof(*tmp));
+	tmp->parent = mainOctTree;
 	tmp->center = (Point3f){.5, .5, .5};
 	tmp->radius = .5;
 	tmp->type = Solid;
 	tmp->color = (Color3f) {1.0, 0.0, 0.0};
-	mainOctTree->n1 = tmp;
+	mainOctTree->nodes[1][1][1] = tmp;
 	tmp = malloc(sizeof(*tmp));
+	tmp->parent = mainOctTree;
 	tmp->center = (Point3f){-.5, -.5, .5};
 	tmp->radius = .5;
 	tmp->type = Solid;
 	tmp->color = (Color3f) {1.0, 0.0, 1.0};
-	mainOctTree->n2 = tmp;
+	mainOctTree->nodes[0][0][1] = tmp;
 	tmp = malloc(sizeof(*tmp));
+	tmp->parent = mainOctTree;
 	tmp->center = (Point3f){.5, -.5, .5};
 	tmp->radius = .5;
 	tmp->type = Empty;
-	mainOctTree->n3 = tmp;
+	mainOctTree->nodes[1][0][1] = tmp;
 	tmp = malloc(sizeof(*tmp));
+	tmp->parent = mainOctTree;
 	tmp->center = (Point3f){-.5, .5, -.5};
 	tmp->radius = .5;
 	tmp->type = Solid;
 	tmp->color = (Color3f) {0.0, 1.0, 0.0};
-	mainOctTree->n4 = tmp;
+	mainOctTree->nodes[0][1][0] = tmp;
 	tmp = malloc(sizeof(*tmp));
+	tmp->parent = mainOctTree;
 	tmp->center = (Point3f){.5, .5, -.5};
 	tmp->radius = .5;
 	tmp->type = Empty;
-	mainOctTree->n5 = tmp;
+	mainOctTree->nodes[1][1][0] = tmp;
 	tmp = malloc(sizeof(*tmp));
+	tmp->parent = mainOctTree;
 	tmp->center = (Point3f){-.5, -.5, -.5};
 	tmp->radius = .5;
 	tmp->type = Empty;
 	/*tmp->color = (Color3f) {1.0, 1.0, 0.0};*/
-	mainOctTree->n6 = tmp;
+	mainOctTree->nodes[0][0][0] = tmp;
 	tmp = malloc(sizeof(*tmp));
+	tmp->parent = mainOctTree;
 	tmp->center = (Point3f){.5, -.5, -.5};
 	tmp->radius = .5;
 	tmp->type = Empty;
-	mainOctTree->n7 = tmp;
+	mainOctTree->nodes[1][0][0] = tmp;
 }
 
 void captureOctTree(Point3f camera, Point3f target, Point3f up, int width, int height, float* data)
