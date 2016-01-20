@@ -67,9 +67,9 @@ int vectPlaneIntersection(Point3f origin, Point3f direction, int plane, Point3f 
 
     Point3f intersect = vectMulScalar(origin, direction, dist);
 
-    if (abs(intersect.x) <= value.x
-     && abs(intersect.y) <= value.y
-     && abs(intersect.z) <= value.z)
+    if (fabsf(intersect.x) <= value.x
+     && fabsf(intersect.y) <= value.y
+     && fabsf(intersect.z) <= value.z)
         return 1;
     return 0;
 }
@@ -262,19 +262,19 @@ float MAX(float a, float b) {
 	return a > b ? a : b;
 }
 
-void clamp(Point3f p, float radius) {
-	if (p.x < -radius)
-		p.x = -radius;
-	else if (p.x > radius)
-		p.x = radius;
-	if (p.y < -radius)
-		p.y = -radius;
-	else if (p.y > radius)
-		p.y = radius;
-	if (p.z < -radius)
-		p.z = -radius;
-	else if (p.z > radius)
-		p.z = radius;
+void clamp(Point3f *p, float radius) {
+	if (p->x < -radius)
+		p->x = -radius;
+	else if (p->x > radius)
+		p->x = radius;
+	if (p->y < -radius)
+		p->y = -radius;
+	else if (p->y > radius)
+		p->y = radius;
+	if (p->z < -radius)
+		p->z = -radius;
+	else if (p->z > radius)
+		p->z = radius;
 }
 
 OctTreeNode *maybeSibling(OctTreeNode *tree, int dx, int dy, int dz)
@@ -289,26 +289,31 @@ OctTreeNode *maybeSibling(OctTreeNode *tree, int dx, int dy, int dz)
 
 void ray_cast_oct_tree(Point3f origin, Point3f direction, OctTreeNode * tree, Color3f * color)
 {
+	Point3f local, new_local;
+	float xdist, ydist, zdist;
+	int dx, dy, dz;
+
+next_ray:
+
+	local = vectMulScalar(origin, tree->center, -1);
+
+	if (tree->type == Partial) {
+		tree = tree->nodes[local.x > 0][local.y > 0][local.z > 0];
+		goto next_ray;
+	}
+
 	if (tree->type == Solid) {
 		*color = tree->color;
 		return;
 	}
 
-	Point3f local = vectMulScalar(origin, tree->center, -1);
-	Point3f new_local;
-
-	if (tree->type == Partial) {
-		ray_cast_oct_tree(origin, direction, tree->nodes[local.x > 0][local.y > 0][local.z > 0], color);
-		return;
-	}
-
 	// to prevent bad things that potentially could happen due to numerical errors
-	clamp(local, tree->radius);
+	clamp(&local, tree->radius);
 
-	float xdist = MAX((tree->radius - local.x) / direction.x, (-tree->radius - local.x) / direction.x);
-	float ydist = MAX((tree->radius - local.y) / direction.y, (-tree->radius - local.y) / direction.y);
-	float zdist = MAX((tree->radius - local.z) / direction.z, (-tree->radius - local.z) / direction.z);
-	int dx = 0, dy = 0, dz = 0;
+	xdist = MAX((tree->radius - local.x) / direction.x, (-tree->radius - local.x) / direction.x);
+	ydist = MAX((tree->radius - local.y) / direction.y, (-tree->radius - local.y) / direction.y);
+	zdist = MAX((tree->radius - local.z) / direction.z, (-tree->radius - local.z) / direction.z);
+	dx = 0, dy = 0, dz = 0;
 	if (xdist < ydist && xdist < zdist) {
 		new_local = vectMulScalar(local, direction, xdist);
 		dx = direction.x > 0 ? 1 : -1;
@@ -323,8 +328,9 @@ void ray_cast_oct_tree(Point3f origin, Point3f direction, OctTreeNode * tree, Co
 	while (tree->parent != NULL) {
 		OctTreeNode *sibling = maybeSibling(tree, dx, dy, dz);
 		if (sibling != NULL) {
-			ray_cast_oct_tree(vectMulScalar(new_local, tree->center, 1), direction, sibling, color);
-			return;
+			origin = vectMulScalar(new_local, tree->center, 1);
+			tree = sibling;
+			goto next_ray;
 		}
 		tree = tree->parent;
 	}
