@@ -34,7 +34,7 @@ Point3f vectDiv(Point3f a, float c)
 
 Point3f vectNormalize(Point3f a)
 {
-	float len = sqrt(a.x * a.x + a.y * a.y + a.z * a.z);
+	float len = sqrtf(a.x * a.x + a.y * a.y + a.z * a.z);
 	return vectDiv(a, len);
 }
 
@@ -101,9 +101,9 @@ struct OctTreeNode {
 	};
 };
 
-Point3f camera_pos = {0.89,-0.98,-0.25};
-Point3f camera_target = {0.0,1.0,0.0};
-Point3f up = {0., 0., 1.};
+Point3f camera_pos = {0.89f,-0.98f,-0.25f};
+Point3f camera_target = {0.0f,1.0f,0.0f};
+Point3f up = {0.f, 0.f, 1.f};
 float horizontal_angle = 2.0;
 float vertical_angle = 0.0;
 
@@ -141,9 +141,9 @@ int main(void)
 
 	//**************************** generowanie przykładowych piksli
 	initOctTree();
-	camera_target = (Point3f) { cos(horizontal_angle) * cos(vertical_angle)
-							  , sin(horizontal_angle) * cos(vertical_angle)
-							  , sin(vertical_angle)};
+	camera_target = (Point3f) { cosf(horizontal_angle) * cosf(vertical_angle)
+							  , sinf(horizontal_angle) * cosf(vertical_angle)
+							  , sinf(vertical_angle)};
 	const int height = 500;
 	const int width = 500;
 	float * piksele = malloc(height*width*3*sizeof(*piksele));
@@ -172,7 +172,7 @@ int main(void)
 
 		// show render time in window title
 		char title[16];
-		sprintf(title, "%d ms", (int)((end - start) / (CLOCKS_PER_SEC / 1000)));
+		snprintf(title, 16, "%d ms", (int)((end - start) / (CLOCKS_PER_SEC / 1000)));
 		glfwSetWindowTitle(window, title);
 
 		//Rysowanie ramki na około viewportu
@@ -213,40 +213,40 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
 		Point3f right = vectMul(camera_target, up);
 		switch (key) {
 			case GLFW_KEY_W:
-				camera_pos = vectMulScalar(camera_pos, camera_target, 0.05);
+				camera_pos = vectMulScalar(camera_pos, camera_target, 0.05f);
 				break;
 			case GLFW_KEY_S:
-				camera_pos = vectMulScalar(camera_pos, camera_target, -0.05);
+				camera_pos = vectMulScalar(camera_pos, camera_target, -0.05f);
 				break;
 			case GLFW_KEY_A:
-				camera_pos = vectMulScalar(camera_pos, right, -0.05);
+				camera_pos = vectMulScalar(camera_pos, right, -0.05f);
 				break;
 			case GLFW_KEY_D:
-				camera_pos = vectMulScalar(camera_pos, right, 0.05);
+				camera_pos = vectMulScalar(camera_pos, right, 0.05f);
 				break;
 			case GLFW_KEY_Z:
-				camera_pos = vectMulScalar(camera_pos, up, -0.05);
+				camera_pos = vectMulScalar(camera_pos, up, -0.05f);
 				break;
 			case GLFW_KEY_Q:
-				camera_pos = vectMulScalar(camera_pos, up, 0.05);
+				camera_pos = vectMulScalar(camera_pos, up, 0.05f);
 				break;
 			case GLFW_KEY_I:
-				vertical_angle += 0.05;
+				vertical_angle += 0.05f;
 				break;
 			case GLFW_KEY_K:
-				vertical_angle -= 0.05;
+				vertical_angle -= 0.05f;
 				break;
 			case GLFW_KEY_L:
-				horizontal_angle -= 0.05;
+				horizontal_angle -= 0.05f;
 				break;
 			case GLFW_KEY_J:
-				horizontal_angle += 0.05;
+				horizontal_angle += 0.05f;
 				break;
 			/*default:*/
 		}
-		camera_target = (Point3f) { cos(horizontal_angle) * cos(vertical_angle)
-								  , sin(horizontal_angle) * cos(vertical_angle)
-								  , sin(vertical_angle)};
+		camera_target = (Point3f) { cosf(horizontal_angle) * cosf(vertical_angle)
+								  , sinf(horizontal_angle) * cosf(vertical_angle)
+								  , sinf(vertical_angle)};
 	}
 	printf("Camera position is: (%f, %f %f)\n", camera_pos.x, camera_pos.y, camera_pos.z);
 	printf("Horizontal angle: %f, Vertical angle: %f\n", horizontal_angle, vertical_angle);
@@ -434,14 +434,14 @@ void captureOctTree(Point3f camera, Point3f target, Point3f up, int width, int h
 	Point3f right = vectMul(target, up);
 	Point3f bottom_left_vec = vectSum(target, vectDiv(up, -2), vectDiv(right, -2));
 
-	Point3f dright = vectDiv(right, width);
-	Point3f dup = vectDiv(up, height);
+	Point3f dright = vectDiv(right, (float)width);
+	Point3f dup = vectDiv(up, (float)height);
 
 	for (int y = 0; y < height; y++) for (int x = 0; x < width; x++)
 	{
 		Color3f color = {0.,0.,0.};
 		Point3f temp_target =
-			vectMulScalar(vectMulScalar(bottom_left_vec, dup, y), dright, x);
+			vectMulScalar(vectMulScalar(bottom_left_vec, dup, (float)y), dright, (float)x);
 		ray_cast_oct_tree(camera, temp_target, mainOctTree, &color);
 		data[ARR_IDX(x,y,0)] = color.r;
 		data[ARR_IDX(x,y,1)] = color.g;
