@@ -324,7 +324,7 @@ OctTreeNode *maybeSibling(OctTreeNode *tree, int dx, int dy, int dz)
 	return tree->parent->nodes[nx][ny][nz];
 }
 
-int ray_cast_oct_tree_stacking(Point3f origin, Point3f direction, OctTreeNode * tree, Color3f * color)
+int ray_cast_oct_tree_stacking(Point3f origin, Point3f direction, OctTreeNode * tree, float radius, Point3f center,  Color3f * color)
 {
 	// TODO check if origin inside tree?
 	// TODO ładnie się wywalić jak tree == Null
@@ -337,7 +337,7 @@ int ray_cast_oct_tree_stacking(Point3f origin, Point3f direction, OctTreeNode * 
 	}
 	// if (tree->type == Partial)
 
-	Point3f local = vectMulScalar(origin, tree->center, -1);
+	Point3f local = vectMulScalar(origin, center, -1);
 	float* local_a = (float*)(&local);
 	float* direction_a = (float*)(&direction);
 
@@ -368,7 +368,7 @@ int ray_cast_oct_tree_stacking(Point3f origin, Point3f direction, OctTreeNode * 
 		Point3f half_point = vectMulScalar(local, direction, mid_point_distance);
 
 		Point3f oct = {half_point.x < 0. ? -1 : 1, half_point.y < 0. ? -1 : 1, half_point.z < 0. ? -1 : 1};
-		Point3f pl = {tree->radius * oct.x, tree->radius * oct.y, tree->radius * oct.z};
+		Point3f pl = {radius * oct.x, radius * oct.y, radius * oct.z};
 
 		int found = 0;
 
@@ -376,8 +376,8 @@ int ray_cast_oct_tree_stacking(Point3f origin, Point3f direction, OctTreeNode * 
 			Point3f begin = vectMulScalar(local, direction, intersection_dist[segment_num].dist);
 			float* begin_a = (float*)(&begin);
 			int base_axis = intersection_dist[segment_num].plane;
-			found = fabs(begin_a[ (base_axis+1)%3]) <= tree->radius
-				 && fabs(begin_a[ (base_axis+2)%3]) <= tree->radius;
+			found = fabs(begin_a[ (base_axis+1)%3]) <= radius
+				 && fabs(begin_a[ (base_axis+2)%3]) <= radius;
 		}
 		// we don't check end because each end is also a begin
 
@@ -389,14 +389,20 @@ int ray_cast_oct_tree_stacking(Point3f origin, Point3f direction, OctTreeNode * 
 
 		if (found) {
 			OctTreeNode * t = tree->nodes[half_point.x > 0][half_point.y > 0][half_point.z > 0];
-			int ret = ray_cast_oct_tree_stacking(origin, direction, t, color);
+			// -----
+			Point3f new_pos;
+			new_pos.x = center.x + (radius/2) * oct.x;
+			new_pos.y = center.y + (radius/2) * oct.y;
+			new_pos.z = center.z + (radius/2) * oct.z;
+			// ----
+			int ret = ray_cast_oct_tree_stacking(origin, direction, t, radius/2, new_pos,  color);
 			if (ret) return 1;
 		}
 	}
 	return 0;
 }
 
-void ray_cast_oct_tree_stackless(Point3f origin, Point3f direction, OctTreeNode * tree, Color3f * color)
+void ray_cast_oct_tree_stackless(Point3f origin, Point3f direction, OctTreeNode * tree, float radius, Point3f center, Color3f * color)
 {
 	Point3f local, new_local;
 	float xdist, ydist, zdist;
@@ -404,7 +410,7 @@ void ray_cast_oct_tree_stackless(Point3f origin, Point3f direction, OctTreeNode 
 
 next_ray:
 
-	local = vectMulScalar(origin, tree->center, -1);
+	local = vectMulScalar(origin, center, -1);
 
 	if (tree->type == Partial) {
 		tree = tree->nodes[local.x > 0][local.y > 0][local.z > 0];
@@ -417,11 +423,11 @@ next_ray:
 	}
 
 	// to prevent bad things that potentially could happen due to numerical errors
-	clamp(&local, tree->radius);
+	clamp(&local, radius);
 
-	xdist = MAX((tree->radius - local.x) / direction.x, (-tree->radius - local.x) / direction.x);
-	ydist = MAX((tree->radius - local.y) / direction.y, (-tree->radius - local.y) / direction.y);
-	zdist = MAX((tree->radius - local.z) / direction.z, (-tree->radius - local.z) / direction.z);
+	xdist = MAX((radius - local.x) / direction.x, (-radius - local.x) / direction.x);
+	ydist = MAX((radius - local.y) / direction.y, (-radius - local.y) / direction.y);
+	zdist = MAX((radius - local.z) / direction.z, (-radius - local.z) / direction.z);
 	dx = 0, dy = 0, dz = 0;
 	if (xdist < ydist && xdist < zdist) {
 		new_local = vectMulScalar(local, direction, xdist);
@@ -437,15 +443,24 @@ next_ray:
 	while (tree->parent != NULL) {
 		OctTreeNode *sibling = maybeSibling(tree, dx, dy, dz);
 		if (sibling != NULL) {
-			origin = vectMulScalar(new_local, tree->center, 1);
+			origin = vectMulScalar(new_local, center, 1);
 			tree = sibling;
+			// ----
+			radius = radius;
+			center = (Point3f){center.x + dx * radius, center.y + dy * radius, center.z + dz * radius };
+			// ----
 			goto next_ray;
 		}
+		// ----
+		radius = 2 * radius;
+		center = (Point3f){center.x - tree->x * radius/2, center.y - tree->y * radius/2, center.z + tree->z * radius/2 };
+		// ----
 		tree = tree->parent;
 	}
 
 	color->r = color->g = color->b = 0;
 }
+
 void initOctTree()
 {
 	mainOctTree = malloc(sizeof(*mainOctTree));
@@ -492,7 +507,8 @@ void initOctTree()
 	tmp->x = 1;
 	tmp->y = 0;
 	tmp->z = 1;
-	mainOctTree->nodes[tmp->x][tmp->y][tmp->z] = tmp;
+	/*mainOctTree->nodes[tmp->x][tmp->y][tmp->z] = tmp;*/
+	mainOctTree->nodes[tmp->x][tmp->y][tmp->z] = mainOctTree;
 	tmp = malloc(sizeof(*tmp));
 	tmp->parent = mainOctTree;
 	tmp->center = (Point3f){-.5, .5, -.5};
@@ -551,9 +567,9 @@ void captureOctTree(Point3f camera, Point3f target, Point3f up, int width, int h
 		Point3f temp_target =
 			vectMulScalar(vectMulScalar(bottom_left_vec, dup, (float)y), dright, (float)x);
 		if (render_method == Stacking)
-			ray_cast_oct_tree_stacking(camera, temp_target, mainOctTree, &color);
+			ray_cast_oct_tree_stacking(camera, temp_target, mainOctTree, 1.0, (Point3f){0,0,0}, &color);
 		else
-			ray_cast_oct_tree_stackless(camera, temp_target, mainOctTree, &color);
+			ray_cast_oct_tree_stackless(camera, temp_target, mainOctTree, 1.0, (Point3f){0,0,0}, &color);
 		data[ARR_IDX(x,y,0)] = color.r;
 		data[ARR_IDX(x,y,1)] = color.g;
 		data[ARR_IDX(x,y,2)] = color.b;
