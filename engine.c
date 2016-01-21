@@ -173,6 +173,8 @@ Point3f up = {0.f, 0.f, 1.f};
 float horizontal_angle = 2.0;
 float vertical_angle = 0.0;
 
+enum RenderMethod {Stacking, Stackless} render_method = Stacking;
+
 OctTreeNode * mainOctTree;
 
 static void error_callback(int error, const char* description);
@@ -298,6 +300,18 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
 				break;
 			case GLFW_KEY_J:
 				horizontal_angle += 0.05f;
+				break;
+			case GLFW_KEY_P:
+				printf("Current rendering method is: ");
+				if (render_method == Stacking) {
+					render_method = Stackless;
+					printf("Stackless");
+				}
+				else {
+					render_method = Stacking;
+					printf("Stacking");
+				}
+				printf("\n");
 				break;
 			/*default:*/
 		}
@@ -596,7 +610,10 @@ void captureOctTree(Point3f camera, Point3f target, Point3f up, int width, int h
 		Color3f color = {0.,0.,0.};
 		Point3f temp_target =
 			vectMulScalar(vectMulScalar(bottom_left_vec, dup, (float)y), dright, (float)x);
-		ray_cast_oct_tree_stacking(camera, temp_target, mainOctTree, &color);
+		if (render_method == Stacking)
+			ray_cast_oct_tree_stacking(camera, temp_target, mainOctTree, &color);
+		else
+			ray_cast_oct_tree_stackless(camera, temp_target, mainOctTree, &color);
 		data[ARR_IDX(x,y,0)] = color.r;
 		data[ARR_IDX(x,y,1)] = color.g;
 		data[ARR_IDX(x,y,2)] = color.b;
