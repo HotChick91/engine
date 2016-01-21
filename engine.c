@@ -26,8 +26,11 @@ typedef struct OctTreeNode {
 	int x, y, z;
 	int parent;
 	Point3f center; // center point of cube
+	int padding0;
 	float radius; // cube radius
 	enum OctTreeNodeType type;
+	int padding1;
+	int padding2;
 	union {
 		Color4f color;
 		int nodes[2][2][2];
@@ -242,6 +245,8 @@ int main(void)
 							  , sinf(horizontal_angle) * cosf(vertical_angle)
 							  , sinf(vertical_angle)};
 	float * piksele = malloc(height*width*3*sizeof(*piksele));
+	
+	printf("sizeof(OctTreeNode)=%d\n", sizeof(OctTreeNode));
 
 	//****************************
 
@@ -769,8 +774,8 @@ void captureOctTree(Point3f camera, Point3f target, Point3f up, int width, int h
 		Color4f color = {0.,0.,0.};
 		if (render_method == TracerCL) {
 			color.r = data4[ARR_IDX4(x, y, 0)];
-			color.g = data4[ARR_IDX4(x, y, 0)];
-			color.b = data4[ARR_IDX4(x, y, 0)];
+			color.g = data4[ARR_IDX4(x, y, 1)];
+			color.b = data4[ARR_IDX4(x, y, 2)];
 		} else {
 			Point3f temp_target =
 				vectMulScalar(vectMulScalar(bottom_left_vec, dup, (float)y), dright, (float)x);

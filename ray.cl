@@ -23,12 +23,12 @@ kernel void ray_cl(float3 origin, float3 bottom_left_vec, float3 dup, float3 dri
 	// TODO: see if OctTreeNode instead of a pointer makes any difference
 	global OctTreeNode *tree = trees;
 
-	my_px = (get_global_id(0), get_global_id(1));
+	my_px = (int2)(get_global_id(0), get_global_id(1));
 	float3 direction = bottom_left_vec + dup * my_px.y + dright * my_px.x;
 
 	for (;;) {
 		relative = origin - tree->center;
-
+		
 		while (tree->type == Partial) {
 			tree = trees + tree->nodes[relative.x > 0][relative.y > 0][relative.z > 0];
 			relative = origin - tree->center;
@@ -70,7 +70,7 @@ kernel void ray_cl(float3 origin, float3 bottom_left_vec, float3 dup, float3 dri
 		}
 
 		if (tree->parent == -1) {
-			write_imagef(image, my_px, (float4)(1, 1, 1, 0));
+			write_imagef(image, my_px, (float4)(0, 0, 0, 0));
 			return;
 		}
 	}
