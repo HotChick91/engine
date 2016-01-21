@@ -5,13 +5,34 @@
 #include <time.h>
 #include <CL/cl.h>
 
-#define ARR_IDX(x, y, col) (((y) * width + (x)) * 3) + (col)
-
+#define ARR_IDX(x, y, col) ((((y) * width + (x)) * 3) + (col))
+#define ARR_IDX4(x, y, col) ((((y) * width + (x)) * 4) + (col))
 typedef struct Point3f {
 	float x;
 	float y;
 	float z;
 } Point3f;
+
+typedef struct Color4f {
+	float r;
+	float g;
+	float b;
+	float a;
+} Color4f;
+
+enum OctTreeNodeType { Empty, Solid, Partial };
+
+typedef struct OctTreeNode {
+	int x, y, z;
+	int parent;
+	Point3f center; // center point of cube
+	float radius; // cube radius
+	enum OctTreeNodeType type;
+	union {
+		Color4f color;
+		int nodes[2][2][2];
+	};
+} OctTreeNode;
 
 Point3f vectMul(Point3f a, Point3f b)
 {
@@ -146,35 +167,13 @@ int vectPlaneIntersection(Point3f origin, Point3f direction, int plane, Point3f 
 	return 1;
 }
 
-typedef struct Color3f {
-	float r;
-	float g;
-	float b;
-} Color3f;
-
-enum OctTreeNodeType {Empty, Solid, Partial}; // TODO owrapować to ładnie, żeby nie robić syfu w top lvl
-
-typedef struct OctTreeNode OctTreeNode;
-
-struct OctTreeNode {
-	int x, y, z;
-	OctTreeNode *parent;
-	Point3f center; // center point of cube
-	float radius; // cube radius
-	enum OctTreeNodeType type;
-	union {
-		Color3f color;
-		OctTreeNode *nodes[2][2][2];
-	};
-};
-
 Point3f camera_pos = {0.89f,-0.98f,-0.25f};
 Point3f camera_target = {0.0f,1.0f,0.0f};
 Point3f up = {0.f, 0.f, 1.f};
 float horizontal_angle = 2.0;
 float vertical_angle = 0.0;
 
-enum RenderMethod {Stacking, Stackless} render_method = Stacking;
+enum RenderMethod {Stacking, Stackless, TracerCL} render_method = Stacking;
 
 OctTreeNode * mainOctTree;
 
@@ -182,6 +181,35 @@ static void error_callback(int error, const char* description);
 static void key_callback(GLFWwindow* windows, int key, int scancode, int action, int mods);
 void initOctTree();
 void captureOctTree(Point3f camera, Point3f target, Point3f up, int width, int height, float* data);
+
+void die(char *context, char *detail, int code) {
+	fprintf(stderr, "FATAL ERROR: %s: %s (%d)\n", context, detail, code);
+	exit(1);
+}
+
+void check_nn(void *ptr, char *msg) {
+	if (ptr == NULL)
+		die(msg, "null", 0);
+}
+
+void check_cl(cl_int status, char *msg) {
+	if (status != CL_SUCCESS)
+		die(msg, "opencl error", status);
+}
+
+void check_ferror(FILE *stream, char *msg) {
+	int errord = ferror(stream);
+	if (errord)
+		die(msg, "ferror", errord);
+}
+
+cl_command_queue queue;
+cl_kernel kernel;
+cl_mem mainOctCL;
+cl_mem image;
+const int height = 480;
+const int width = 480;
+float *data4;
 
 int main(void)
 {
@@ -196,7 +224,7 @@ int main(void)
 	}
 
 	/* Create a windowed mode window and its OpenGL context */
-	window = glfwCreateWindow(500, 500, "Hello World", NULL, NULL);
+	window = glfwCreateWindow(width, height, "Hello World", NULL, NULL);
 	if (!window) {
 		glfwTerminate();
 		fprintf(stderr, "Error creating window.\n");
@@ -213,54 +241,100 @@ int main(void)
 	camera_target = (Point3f) { cosf(horizontal_angle) * cosf(vertical_angle)
 							  , sinf(horizontal_angle) * cosf(vertical_angle)
 							  , sinf(vertical_angle)};
-	const int height = 500;
-	const int width = 500;
 	float * piksele = malloc(height*width*3*sizeof(*piksele));
 
 	//****************************
 
 	// prepare your anus
 	// i mean gpu
-	char *kernel_src;
-	cl_context context = clCreateContextFromType(NULL, CL_DEVICE_TYPE_GPU, NULL, NULL, NULL);
+	cl_int status;
+	cl_platform_id platform_id;
+	cl_int num_platforms;
+	char *kernel_src = malloc(10240);
+	check_nn(kernel_src, "kernel_src");
+	status = clGetPlatformIDs(1, &platform_id, &num_platforms);
+	check_cl(status, "get platform ids");
+	printf("#platforms: %d\n", num_platforms);
+	cl_context_properties props[] = {CL_CONTEXT_PLATFORM, (cl_context_properties)platform_id, 0};
+
+	char info[5][128];
+	status = clGetPlatformInfo(platform_id, CL_PLATFORM_PROFILE, 128, info[0], NULL);
+	check_cl(status, "get platform profile");
+	status = clGetPlatformInfo(platform_id, CL_PLATFORM_VERSION, 128, info[1], NULL);
+	check_cl(status, "get platform version");
+	status = clGetPlatformInfo(platform_id, CL_PLATFORM_NAME, 128, info[2], NULL);
+	check_cl(status, "get platform name");
+	status = clGetPlatformInfo(platform_id, CL_PLATFORM_VENDOR, 128, info[3], NULL);
+	check_cl(status, "get platform vendor");
+	status = clGetPlatformInfo(platform_id, CL_PLATFORM_EXTENSIONS, 128, info[4], NULL);
+	check_cl(status, "get platform extensions");
+	printf("profile: %s\n", info[0]);
+	printf("version: %s\n", info[1]);
+	printf("name: %s\n", info[2]);
+	printf("vendor: %s\n", info[3]);
+	printf("extensions: %s\n", info[4]);
+
+	cl_context context = clCreateContextFromType(props, CL_DEVICE_TYPE_GPU, NULL, NULL, &status);
+	check_cl(status, "create context");
 
 	// create a command queue
 	cl_device_id device_id;
-	clGetDeviceIDs( NULL, CL_DEVICE_TYPE_GPU, 1, &device_id, NULL );
-	cl_command_queue queue = clCreateCommandQueue(context, device_id, 0, NULL);
+	status = clGetDeviceIDs(platform_id, CL_DEVICE_TYPE_GPU, 1, &device_id, NULL);
+	check_cl(status, "get device ids");
+	queue = clCreateCommandQueueWithProperties(context, device_id, NULL, &status);
+	check_cl(status, "create command queue");
 
-	// allocate the buffer memory objects
-	//memobjs[0] = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float)*2*num_entries, srcA, NULL);
-	//memobjs[1] = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(float)*2*num_entries, NULL, NULL);
+	// allocate memory objects
+	mainOctCL = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, 9*sizeof(OctTreeNode), mainOctTree, &status);
+	check_cl(status, "create buffer");
+	cl_image_format fmt = { CL_RGBA, CL_FLOAT };
+	cl_image_desc desc;
+	desc.image_type = CL_MEM_OBJECT_IMAGE2D;
+	desc.image_width = width;
+	desc.image_height = height;
+	desc.image_row_pitch = 0;
+	desc.image_slice_pitch = 0;
+	desc.num_mip_levels = 0;
+	desc.num_samples = 0;
+	desc.mem_object = NULL;
+	image = clCreateImage(context, CL_MEM_WRITE_ONLY, &fmt, &desc, NULL, &status);
+	check_cl(status, "create image");
+
+	data4 = malloc(width * height * 4 * sizeof(*data4));
+	check_nn(data4, "data4");
 
 	// create the compute program
-	cl_program program = clCreateProgramWithSource(context, 1, &kernel_src, NULL, NULL);
+	FILE *kernel_handle;
+	fopen_s(&kernel_handle, "../ray.cl", "rb");
+	check_nn(kernel_handle, "fopen ray.cl");
+	size_t n_bytes = fread(kernel_src, 1, 10239, kernel_handle);
+	kernel_src[n_bytes] = '\0';
+	check_ferror(kernel_handle, "fread");
+	cl_program program = clCreateProgramWithSource(context, 1, &kernel_src, NULL, &status);
+	check_cl(status, "create program");
 
 	// build the compute program executable
-	clBuildProgram(program, 0, NULL, NULL, NULL, NULL);
+	status = clBuildProgram(program, 0, NULL, NULL, NULL, NULL);
+	if (status != CL_BUILD_PROGRAM_FAILURE) {
+		check_cl(status, "build program");
+	}
+	else {
+		size_t log_size;
+		status = clGetProgramBuildInfo(program, device_id, CL_PROGRAM_BUILD_LOG, 0, NULL, &log_size);
+		check_cl(status, "get program build log size");
+
+		char *log = malloc(log_size);
+		check_nn(log, "log");
+
+		status = clGetProgramBuildInfo(program, device_id, CL_PROGRAM_BUILD_LOG, log_size, log, NULL);
+		check_cl(status, "get program build log");
+
+		die("build kernel error", log, CL_BUILD_PROGRAM_FAILURE);
+	}
 
 	// create the compute kernel
-	cl_kernel kernel = clCreateKernel(program, "fft1D_1024", NULL);
-
-	// set the args values
-	/*
-	clSetKernelArg(kernel, 0, sizeof(cl_mem), (void *)&memobjs[0]);
-	clSetKernelArg(kernel, 1, sizeof(cl_mem), (void *)&memobjs[1]);
-	clSetKernelArg(kernel, 2, sizeof(float)*(local_work_size[0]+1)*16, NULL);
-	clSetKernelArg(kernel, 3, sizeof(float)*(local_work_size[0]+1)*16, NULL);
-	*/
-
-	// create N-D range object with work-item dimensions and execute kernel
-	size_t global_work_size[] = {width, height};
-	size_t local_work_size[] = {8, 8}; //Nvidia: 192 or 256
-	clEnqueueNDRangeKernel(queue, kernel, 2, NULL, global_work_size, local_work_size, 0, NULL, NULL);
-
-	clFinish(queue);
-
-	clReleaseProgram(program);
-    clReleaseKernel(kernel);
-    clReleaseCommandQueue(queue);
-    clReleaseContext(context);
+	kernel = clCreateKernel(program, "ray_cl", &status);
+	check_cl(status, "create kernel");
 
 	/* Loop until the user closes the window */
 	while (!glfwWindowShouldClose(window))
@@ -300,6 +374,11 @@ int main(void)
 		/* Poll for and process events */
 		glfwPollEvents();
 	}
+
+	clReleaseProgram(program);
+	clReleaseKernel(kernel);
+	clReleaseCommandQueue(queue);
+	clReleaseContext(context);
 
 	glfwDestroyWindow(window);
 
@@ -350,8 +429,10 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
 				if (render_method == Stacking) {
 					render_method = Stackless;
 					printf("Stackless");
-				}
-				else {
+				} else if (render_method == Stackless) {
+					render_method = TracerCL;
+					printf("TracerCL");
+				} else {
 					render_method = Stacking;
 					printf("Stacking");
 				}
@@ -399,11 +480,12 @@ OctTreeNode *maybeSibling(OctTreeNode *tree, int dx, int dy, int dz)
 	int nz = tree->z + dz;
 	if ((nx | ny | nz) & (~1))
 		return NULL;
-	return tree->parent->nodes[nx][ny][nz];
+	return mainOctTree + mainOctTree[tree->parent].nodes[nx][ny][nz];
 }
 
-int ray_cast_oct_tree_stacking(Point3f origin, Point3f direction, OctTreeNode * tree, Color3f * color)
+int ray_cast_oct_tree_stacking(Point3f origin, Point3f direction, OctTreeNode * tree, Color4f * color)
 {
+#if 0
 	// TODO check if origin inside tree?
 	// TODO ładnie się wywalić jak tree == Null
 
@@ -497,10 +579,11 @@ int ray_cast_oct_tree_stacking(Point3f origin, Point3f direction, OctTreeNode * 
 			if (ret) return 1;
 		}
 	}
+#endif
 	return 0;
 }
 
-void ray_cast_oct_tree_stackless(Point3f origin, Point3f direction, OctTreeNode * tree, Color3f * color)
+void ray_cast_oct_tree_stackless(Point3f origin, Point3f direction, OctTreeNode * tree, Color4f * color)
 {
 	Point3f local, new_local;
 	float xdist, ydist, zdist;
@@ -511,7 +594,7 @@ next_ray:
 	local = vectMulScalar(origin, tree->center, -1);
 
 	if (tree->type == Partial) {
-		tree = tree->nodes[local.x > 0][local.y > 0][local.z > 0];
+		tree = mainOctTree + tree->nodes[local.x > 0][local.y > 0][local.z > 0];
 		goto next_ray;
 	}
 
@@ -538,103 +621,101 @@ next_ray:
 		dz = direction.z > 0 ? 1 : -1;
 	}
 
-	while (tree->parent != NULL) {
+	while (tree->parent != -1) {
 		OctTreeNode *sibling = maybeSibling(tree, dx, dy, dz);
 		if (sibling != NULL) {
 			origin = vectMulScalar(new_local, tree->center, 1);
 			tree = sibling;
 			goto next_ray;
 		}
-		tree = tree->parent;
+		tree = mainOctTree + tree->parent;
 	}
-
-	color->r = color->g = color->b = 0;
+	color->r = color->g = color->b = color->a = 0;
 }
 void initOctTree()
 {
-	mainOctTree = malloc(sizeof(*mainOctTree));
-	mainOctTree->parent = NULL;
+	mainOctTree = malloc(9*sizeof(*mainOctTree));
+	mainOctTree->parent = -1;
 	mainOctTree->center = (Point3f){0.,0.,0.};
 	mainOctTree->radius = 1.;
 	mainOctTree->type = Partial;
-	OctTreeNode* tmp;
-	tmp = malloc(sizeof(*tmp));
-	tmp->parent = mainOctTree;
-	tmp->center = (Point3f){-.5, .5, .5};
-	tmp->radius = .5;
-	tmp->type = Solid;
-	tmp->color = (Color3f) {0.0, 0.0, 1.0};
-	tmp->x = 0;
-	tmp->y = 1;
-	tmp->z = 1;
-	mainOctTree->nodes[tmp->x][tmp->y][tmp->z] = tmp;
-	tmp = malloc(sizeof(*tmp));
-	tmp->parent = mainOctTree;
-	tmp->center = (Point3f){.5, .5, .5};
-	tmp->radius = .5;
-	tmp->type = Solid;
-	tmp->color = (Color3f) {1.0, 0.0, 0.0};
-	tmp->x = 1;
-	tmp->y = 1;
-	tmp->z = 1;
-	mainOctTree->nodes[tmp->x][tmp->y][tmp->z] = tmp;
-	tmp = malloc(sizeof(*tmp));
-	tmp->parent = mainOctTree;
-	tmp->center = (Point3f){-.5, -.5, .5};
-	tmp->radius = .5;
-	tmp->type = Solid;
-	tmp->color = (Color3f) {1.0, 0.0, 1.0};
-	tmp->x = 0;
-	tmp->y = 0;
-	tmp->z = 1;
-	mainOctTree->nodes[tmp->x][tmp->y][tmp->z] = tmp;
-	tmp = malloc(sizeof(*tmp));
-	tmp->parent = mainOctTree;
-	tmp->center = (Point3f){.5, -.5, .5};
-	tmp->radius = .5;
-	tmp->type = Empty;
-	tmp->x = 1;
-	tmp->y = 0;
-	tmp->z = 1;
-	mainOctTree->nodes[tmp->x][tmp->y][tmp->z] = tmp;
-	tmp = malloc(sizeof(*tmp));
-	tmp->parent = mainOctTree;
-	tmp->center = (Point3f){-.5, .5, -.5};
-	tmp->radius = .5;
-	tmp->type = Solid;
-	tmp->color = (Color3f) {0.0, 1.0, 0.0};
-	tmp->x = 0;
-	tmp->y = 1;
-	tmp->z = 0;
-	mainOctTree->nodes[tmp->x][tmp->y][tmp->z] = tmp;
-	tmp = malloc(sizeof(*tmp));
-	tmp->parent = mainOctTree;
-	tmp->center = (Point3f){.5, .5, -.5};
-	tmp->radius = .5;
-	tmp->type = Empty;
-	tmp->x = 1;
-	tmp->y = 1;
-	tmp->z = 0;
-	mainOctTree->nodes[tmp->x][tmp->y][tmp->z] = tmp;
-	tmp = malloc(sizeof(*tmp));
-	tmp->parent = mainOctTree;
-	tmp->center = (Point3f){-.5, -.5, -.5};
-	tmp->radius = .5;
-	tmp->type = Empty;
-	/*tmp->color = (Color3f) {1.0, 1.0, 0.0};*/
-	tmp->x = 0;
-	tmp->y = 0;
-	tmp->z = 0;
-	mainOctTree->nodes[tmp->x][tmp->y][tmp->z] = tmp;
-	tmp = malloc(sizeof(*tmp));
-	tmp->parent = mainOctTree;
-	tmp->center = (Point3f){.5, -.5, -.5};
-	tmp->radius = .5;
-	tmp->type = Empty;
-	tmp->x = 1;
-	tmp->y = 0;
-	tmp->z = 0;
-	mainOctTree->nodes[tmp->x][tmp->y][tmp->z] = tmp;
+	OctTreeNode tmp;
+	tmp.parent = 0;
+	tmp.center = (Point3f){-.5, .5, .5};
+	tmp.radius = .5;
+	tmp.type = Solid;
+	tmp.color = (Color4f) {0.0, 0.0, 1.0, 0.0};
+	tmp.x = 0;
+	tmp.y = 1;
+	tmp.z = 1;
+	mainOctTree[0].nodes[tmp.x][tmp.y][tmp.z] = 1;
+	mainOctTree[1] = tmp;
+	tmp.parent = 0;
+	tmp.center = (Point3f){.5, .5, .5};
+	tmp.radius = .5;
+	tmp.type = Solid;
+	tmp.color = (Color4f) {1.0, 0.0, 0.0, 0.0};
+	tmp.x = 1;
+	tmp.y = 1;
+	tmp.z = 1;
+	mainOctTree[0].nodes[tmp.x][tmp.y][tmp.z] = 2;
+	mainOctTree[2] = tmp;
+	tmp.parent = 0;
+	tmp.center = (Point3f){-.5, -.5, .5};
+	tmp.radius = .5;
+	tmp.type = Solid;
+	tmp.color = (Color4f) {1.0, 0.0, 1.0, 0.0};
+	tmp.x = 0;
+	tmp.y = 0;
+	tmp.z = 1;
+	mainOctTree[0].nodes[tmp.x][tmp.y][tmp.z] = 3;
+	mainOctTree[3] = tmp;
+	tmp.parent = 0;
+	tmp.center = (Point3f){.5, -.5, .5};
+	tmp.radius = .5;
+	tmp.type = Empty;
+	tmp.x = 1;
+	tmp.y = 0;
+	tmp.z = 1;
+	mainOctTree[0].nodes[tmp.x][tmp.y][tmp.z] = 4;
+	mainOctTree[4] = tmp;
+	tmp.parent = 0;
+	tmp.center = (Point3f){-.5, .5, -.5};
+	tmp.radius = .5;
+	tmp.type = Solid;
+	tmp.color = (Color4f) {0.0, 1.0, 0.0, 0.0};
+	tmp.x = 0;
+	tmp.y = 1;
+	tmp.z = 0;
+	mainOctTree[0].nodes[tmp.x][tmp.y][tmp.z] = 5;
+	mainOctTree[5] = tmp;
+	tmp.parent = 0;
+	tmp.center = (Point3f){.5, .5, -.5};
+	tmp.radius = .5;
+	tmp.type = Empty;
+	tmp.x = 1;
+	tmp.y = 1;
+	tmp.z = 0;
+	mainOctTree[0].nodes[tmp.x][tmp.y][tmp.z] = 6;
+	mainOctTree[6] = tmp;
+	tmp.parent = 0;
+	tmp.center = (Point3f){-.5, -.5, -.5};
+	tmp.radius = .5;
+	tmp.type = Empty;
+	tmp.x = 0;
+	tmp.y = 0;
+	tmp.z = 0;
+	mainOctTree[0].nodes[tmp.x][tmp.y][tmp.z] = 7;
+	mainOctTree[7] = tmp;
+	tmp.parent = 0;
+	tmp.center = (Point3f){.5, -.5, -.5};
+	tmp.radius = .5;
+	tmp.type = Empty;
+	tmp.x = 1;
+	tmp.y = 0;
+	tmp.z = 0;
+	mainOctTree[0].nodes[tmp.x][tmp.y][tmp.z] = 8;
+	mainOctTree[8] = tmp;
 }
 
 void captureOctTree(Point3f camera, Point3f target, Point3f up, int width, int height, float* data)
@@ -649,18 +730,58 @@ void captureOctTree(Point3f camera, Point3f target, Point3f up, int width, int h
 	Point3f dright = vectDiv(right, (float)width);
 	Point3f dup = vectDiv(up, (float)height);
 
+
+	if (render_method == TracerCL) {
+		// set the args values
+		cl_int status;
+		status = clSetKernelArg(kernel, 0, sizeof(cl_float3), &camera);
+		check_cl(status, "set arg 0");
+		status = clSetKernelArg(kernel, 1, sizeof(cl_float3), &bottom_left_vec);
+		check_cl(status, "set arg 1");
+		status = clSetKernelArg(kernel, 2, sizeof(cl_float3), &dup);
+		check_cl(status, "set arg 2");
+		status = clSetKernelArg(kernel, 3, sizeof(cl_float3), &dright);
+		check_cl(status, "set arg 3");
+		status = clSetKernelArg(kernel, 4, sizeof(cl_mem), &mainOctCL);
+		check_cl(status, "set arg 4");
+		status = clSetKernelArg(kernel, 5, sizeof(cl_mem), &image);
+		check_cl(status, "set arg 5");
+
+		// run kernel
+		size_t global_work_size[] = {width, height};
+		size_t local_work_size[] = {8, 8};
+		cl_event event;
+		status = clEnqueueNDRangeKernel(queue, kernel, 2, NULL, global_work_size, local_work_size, 0, NULL, &event);
+		check_cl(status, "enqueue kernel");
+
+		size_t offset[] = {0, 0, 0};
+		size_t dims[] = {width, height, 1};
+		
+		status = clEnqueueReadImage(queue, image, 1, offset, dims, 0, 0, data4, 1, &event, NULL);
+		check_cl(status, "read");
+
+		status = clFinish(queue);
+		check_cl(status, "finish");
+	}
+
 	for (int y = 0; y < height; y++) for (int x = 0; x < width; x++)
 	{
-		Color3f color = {0.,0.,0.};
-		Point3f temp_target =
-			vectMulScalar(vectMulScalar(bottom_left_vec, dup, (float)y), dright, (float)x);
-		if (render_method == Stacking)
-			ray_cast_oct_tree_stacking(camera, temp_target, mainOctTree, &color);
-		else
-			ray_cast_oct_tree_stackless(camera, temp_target, mainOctTree, &color);
-		data[ARR_IDX(x,y,0)] = color.r;
-		data[ARR_IDX(x,y,1)] = color.g;
-		data[ARR_IDX(x,y,2)] = color.b;
+		Color4f color = {0.,0.,0.};
+		if (render_method == TracerCL) {
+			color.r = data4[ARR_IDX4(x, y, 0)];
+			color.g = data4[ARR_IDX4(x, y, 0)];
+			color.b = data4[ARR_IDX4(x, y, 0)];
+		} else {
+			Point3f temp_target =
+				vectMulScalar(vectMulScalar(bottom_left_vec, dup, (float)y), dright, (float)x);
+			if (render_method == Stacking)
+				ray_cast_oct_tree_stacking(camera, temp_target, mainOctTree, &color);
+			else
+				ray_cast_oct_tree_stackless(camera, temp_target, mainOctTree, &color);
+		}
+		data[ARR_IDX(x, y, 0)] = color.r;
+		data[ARR_IDX(x, y, 1)] = color.g;
+		data[ARR_IDX(x, y, 2)] = color.b;
 	}
 
 }
