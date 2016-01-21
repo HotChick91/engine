@@ -3,6 +3,7 @@
 #include <math.h>
 #include <stdlib.h>
 #include <time.h>
+#include <CL/cl.h>
 
 #define ARR_IDX(x, y, col) (((y) * width + (x)) * 3) + (col)
 
@@ -158,6 +159,49 @@ int main(void)
 	/*}*/
 
 	//****************************
+
+	// prepare your anus
+	// i mean gpu
+	char *kernel_src;
+	cl_context context = clCreateContextFromType(NULL, CL_DEVICE_TYPE_GPU, NULL, NULL, NULL);
+
+	// create a command queue
+	cl_device_id device_id;
+	clGetDeviceIDs( NULL, CL_DEVICE_TYPE_GPU, 1, &device_id, NULL );
+	cl_command_queue queue = clCreateCommandQueue(context, device_id, 0, NULL);
+
+	// allocate the buffer memory objects
+	//memobjs[0] = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float)*2*num_entries, srcA, NULL);
+	//memobjs[1] = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(float)*2*num_entries, NULL, NULL);
+
+	// create the compute program
+	cl_program program = clCreateProgramWithSource(context, 1, &kernel_src, NULL, NULL);
+
+	// build the compute program executable
+	clBuildProgram(program, 0, NULL, NULL, NULL, NULL);
+
+	// create the compute kernel
+	cl_kernel kernel = clCreateKernel(program, "fft1D_1024", NULL);
+
+	// set the args values
+	/*
+	clSetKernelArg(kernel, 0, sizeof(cl_mem), (void *)&memobjs[0]);
+	clSetKernelArg(kernel, 1, sizeof(cl_mem), (void *)&memobjs[1]);
+	clSetKernelArg(kernel, 2, sizeof(float)*(local_work_size[0]+1)*16, NULL);
+	clSetKernelArg(kernel, 3, sizeof(float)*(local_work_size[0]+1)*16, NULL);
+	*/
+
+	// create N-D range object with work-item dimensions and execute kernel
+	size_t global_work_size[] = {width, height};
+	size_t local_work_size[] = {8, 8}; //Nvidia: 192 or 256
+	clEnqueueNDRangeKernel(queue, kernel, 2, NULL, global_work_size, local_work_size, 0, NULL, NULL);
+
+	clFinish(queue);
+
+	clReleaseProgram(program);
+    clReleaseKernel(kernel);
+    clReleaseCommandQueue(queue);
+    clReleaseContext(context);
 
 	/* Loop until the user closes the window */
 	while (!glfwWindowShouldClose(window))
