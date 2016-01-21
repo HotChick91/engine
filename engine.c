@@ -444,8 +444,6 @@ int ray_cast_oct_tree(Point3f origin, Point3f direction, OctTreeNode * tree, Col
 			}
 			int ret = ray_cast_oct_tree(origin, direction, t, color);
 			if (ret) return 1;
-		} else {
-			break;
 		}
 	}
 	return 0;
