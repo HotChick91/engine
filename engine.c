@@ -39,7 +39,7 @@ Point3f vectScale(Point3f a, Point3f b)
 
 Point3f vectNormalize(Point3f a)
 {
-	float len = sqrt(a.x * a.x + a.y * a.y + a.z * a.z);
+	float len = sqrtf(a.x * a.x + a.y * a.y + a.z * a.z);
 	return vectDiv(a, len);
 }
 
@@ -156,27 +156,20 @@ enum OctTreeNodeType {Empty, Solid, Partial}; // TODO owrapować to ładnie, że
 typedef struct OctTreeNode OctTreeNode;
 
 struct OctTreeNode {
+	int x, y, z;
+	OctTreeNode *parent;
 	Point3f center; // center point of cube
 	float radius; // cube radius
 	enum OctTreeNodeType type;
 	union {
 		Color3f color;
-		struct {
-			OctTreeNode* n0;
-			OctTreeNode* n1;
-			OctTreeNode* n2;
-			OctTreeNode* n3;
-			OctTreeNode* n4;
-			OctTreeNode* n5;
-			OctTreeNode* n6;
-			OctTreeNode* n7;
-		};
+		OctTreeNode *nodes[2][2][2];
 	};
 };
 
-Point3f camera_pos = {0.89,-1.48,-0.25};
-Point3f camera_target = {0.0,1.0,0.0};
-Point3f up = {0., 0., 1.};
+Point3f camera_pos = {0.89f,-0.98f,-0.25f};
+Point3f camera_target = {0.0f,1.0f,0.0f};
+Point3f up = {0.f, 0.f, 1.f};
 float horizontal_angle = 2.0;
 float vertical_angle = 0.0;
 
@@ -214,11 +207,11 @@ int main(void)
 
 	//**************************** generowanie przykładowych piksli
 	initOctTree();
-	camera_target = (Point3f) { cos(horizontal_angle) * cos(vertical_angle)
-							  , sin(horizontal_angle) * cos(vertical_angle)
-							  , sin(vertical_angle)};
-	const int height = 200;
-	const int width = 200;
+	camera_target = (Point3f) { cosf(horizontal_angle) * cosf(vertical_angle)
+							  , sinf(horizontal_angle) * cosf(vertical_angle)
+							  , sinf(vertical_angle)};
+	const int height = 500;
+	const int width = 500;
 	float * piksele = malloc(height*width*3*sizeof(*piksele));
 
 	//****************************
@@ -236,7 +229,7 @@ int main(void)
 
 		// show render time in window title
 		char title[16];
-		sprintf(title, "%d ms", (int)((end - start) / (CLOCKS_PER_SEC / 1000)));
+		snprintf(title, 16, "%d ms", (int)((end - start) / (CLOCKS_PER_SEC / 1000)));
 		glfwSetWindowTitle(window, title);
 
 		//Rysowanie ramki na około viewportu
@@ -277,40 +270,40 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
 		Point3f right = vectMul(camera_target, up);
 		switch (key) {
 			case GLFW_KEY_W:
-				camera_pos = vectMulScalar(camera_pos, camera_target, 0.05);
+				camera_pos = vectMulScalar(camera_pos, camera_target, 0.05f);
 				break;
 			case GLFW_KEY_S:
-				camera_pos = vectMulScalar(camera_pos, camera_target, -0.05);
+				camera_pos = vectMulScalar(camera_pos, camera_target, -0.05f);
 				break;
 			case GLFW_KEY_A:
-				camera_pos = vectMulScalar(camera_pos, right, -0.05);
+				camera_pos = vectMulScalar(camera_pos, right, -0.05f);
 				break;
 			case GLFW_KEY_D:
-				camera_pos = vectMulScalar(camera_pos, right, 0.05);
+				camera_pos = vectMulScalar(camera_pos, right, 0.05f);
 				break;
 			case GLFW_KEY_Z:
-				camera_pos = vectMulScalar(camera_pos, up, -0.05);
+				camera_pos = vectMulScalar(camera_pos, up, -0.05f);
 				break;
 			case GLFW_KEY_Q:
-				camera_pos = vectMulScalar(camera_pos, up, 0.05);
+				camera_pos = vectMulScalar(camera_pos, up, 0.05f);
 				break;
 			case GLFW_KEY_I:
-				vertical_angle += 0.05;
+				vertical_angle += 0.05f;
 				break;
 			case GLFW_KEY_K:
-				vertical_angle -= 0.05;
+				vertical_angle -= 0.05f;
 				break;
 			case GLFW_KEY_L:
-				horizontal_angle -= 0.05;
+				horizontal_angle -= 0.05f;
 				break;
 			case GLFW_KEY_J:
-				horizontal_angle += 0.05;
+				horizontal_angle += 0.05f;
 				break;
 			/*default:*/
 		}
-		camera_target = (Point3f) { cos(horizontal_angle) * cos(vertical_angle)
-								  , sin(horizontal_angle) * cos(vertical_angle)
-								  , sin(vertical_angle)};
+		camera_target = (Point3f) { cosf(horizontal_angle) * cosf(vertical_angle)
+								  , sinf(horizontal_angle) * cosf(vertical_angle)
+								  , sinf(vertical_angle)};
 	}
 	printf("Camera position is: (%f, %f %f)\n", camera_pos.x, camera_pos.y, camera_pos.z);
 	printf("Horizontal angle: %f, Vertical angle: %f\n", horizontal_angle, vertical_angle);
@@ -322,9 +315,36 @@ void error_callback(int error, const char* description)
 	fprintf(stderr, "(%d) %s\n", error, description);
 }
 
-// returns 0 if not found any objects
-// returns 1 if object found, color is filled with color information
-int ray_cast_oct_tree(Point3f origin, Point3f direction, OctTreeNode * tree, Color3f * color)
+float MAX(float a, float b) {
+	return a > b ? a : b;
+}
+
+void clamp(Point3f *p, float radius) {
+	if (p->x < -radius)
+		p->x = -radius;
+	else if (p->x > radius)
+		p->x = radius;
+	if (p->y < -radius)
+		p->y = -radius;
+	else if (p->y > radius)
+		p->y = radius;
+	if (p->z < -radius)
+		p->z = -radius;
+	else if (p->z > radius)
+		p->z = radius;
+}
+
+OctTreeNode *maybeSibling(OctTreeNode *tree, int dx, int dy, int dz)
+{
+	int nx = tree->x + dx;
+	int ny = tree->y + dy;
+	int nz = tree->z + dz;
+	if ((nx | ny | nz) & (~1))
+		return NULL;
+	return tree->parent->nodes[nx][ny][nz];
+}
+
+int ray_cast_oct_tree_stacking(Point3f origin, Point3f direction, OctTreeNode * tree, Color3f * color)
 {
 	// TODO check if origin inside tree?
 	// TODO ładnie się wywalić jak tree == Null
@@ -414,93 +434,149 @@ int ray_cast_oct_tree(Point3f origin, Point3f direction, OctTreeNode * tree, Col
 		if (found) // TODO fix after mergin stackless
 		{
 			OctTreeNode * t;
-			if (half_point.z >= 0) // 0 1 2 3
-			{
-				if (half_point.y >= 0) // 0 1
-				{
-					if (half_point.x >= 0)
-						t = tree->n1;
-					else
-						t = tree->n0;
-				} else { // 2 3
-					if (half_point.x >= 0)
-						t = tree->n3;
-					else
-						t = tree->n2;
-				}
-			} else { // 4 5 6 7
-				if (half_point.y >= 0) // 4 5
-				{
-					if (half_point.x >= 0)
-						t = tree->n5;
-					else
-						t = tree->n4;
-				} else { // 6 7
-					if (half_point.x >= 0)
-						t = tree->n7;
-					else
-						t = tree->n6;
-				}
-			}
-			int ret = ray_cast_oct_tree(origin, direction, t, color);
+			t = tree->nodes[half_point.x > 0][half_point.y > 0][half_point.z > 0];
+			int ret = ray_cast_oct_tree_stacking(origin, direction, t, color);
 			if (ret) return 1;
 		}
 	}
 	return 0;
 }
 
+void ray_cast_oct_tree_stackless(Point3f origin, Point3f direction, OctTreeNode * tree, Color3f * color)
+{
+	Point3f local, new_local;
+	float xdist, ydist, zdist;
+	int dx, dy, dz;
+
+next_ray:
+
+	local = vectMulScalar(origin, tree->center, -1);
+
+	if (tree->type == Partial) {
+		tree = tree->nodes[local.x > 0][local.y > 0][local.z > 0];
+		goto next_ray;
+	}
+
+	if (tree->type == Solid) {
+		*color = tree->color;
+		return;
+	}
+
+	// to prevent bad things that potentially could happen due to numerical errors
+	clamp(&local, tree->radius);
+
+	xdist = MAX((tree->radius - local.x) / direction.x, (-tree->radius - local.x) / direction.x);
+	ydist = MAX((tree->radius - local.y) / direction.y, (-tree->radius - local.y) / direction.y);
+	zdist = MAX((tree->radius - local.z) / direction.z, (-tree->radius - local.z) / direction.z);
+	dx = 0, dy = 0, dz = 0;
+	if (xdist < ydist && xdist < zdist) {
+		new_local = vectMulScalar(local, direction, xdist);
+		dx = direction.x > 0 ? 1 : -1;
+	} else if (ydist < zdist) {
+		new_local = vectMulScalar(local, direction, ydist);
+		dy = direction.y > 0 ? 1 : -1;
+	} else {
+		new_local = vectMulScalar(local, direction, zdist);
+		dz = direction.z > 0 ? 1 : -1;
+	}
+
+	while (tree->parent != NULL) {
+		OctTreeNode *sibling = maybeSibling(tree, dx, dy, dz);
+		if (sibling != NULL) {
+			origin = vectMulScalar(new_local, tree->center, 1);
+			tree = sibling;
+			goto next_ray;
+		}
+		tree = tree->parent;
+	}
+
+	color->r = color->g = color->b = 0;
+}
 void initOctTree()
 {
 	mainOctTree = malloc(sizeof(*mainOctTree));
+	mainOctTree->parent = NULL;
 	mainOctTree->center = (Point3f){0.,0.,0.};
 	mainOctTree->radius = 1.;
 	mainOctTree->type = Partial;
 	OctTreeNode* tmp;
 	tmp = malloc(sizeof(*tmp));
+	tmp->parent = mainOctTree;
 	tmp->center = (Point3f){-.5, .5, .5};
 	tmp->radius = .5;
 	tmp->type = Solid;
 	tmp->color = (Color3f) {0.0, 0.0, 1.0};
-	mainOctTree->n0 = tmp;
+	tmp->x = 0;
+	tmp->y = 1;
+	tmp->z = 1;
+	mainOctTree->nodes[tmp->x][tmp->y][tmp->z] = tmp;
 	tmp = malloc(sizeof(*tmp));
+	tmp->parent = mainOctTree;
 	tmp->center = (Point3f){.5, .5, .5};
 	tmp->radius = .5;
 	tmp->type = Solid;
 	tmp->color = (Color3f) {1.0, 0.0, 0.0};
-	mainOctTree->n1 = tmp;
+	tmp->x = 1;
+	tmp->y = 1;
+	tmp->z = 1;
+	mainOctTree->nodes[tmp->x][tmp->y][tmp->z] = tmp;
 	tmp = malloc(sizeof(*tmp));
+	tmp->parent = mainOctTree;
 	tmp->center = (Point3f){-.5, -.5, .5};
 	tmp->radius = .5;
 	tmp->type = Solid;
 	tmp->color = (Color3f) {1.0, 0.0, 1.0};
-	mainOctTree->n2 = tmp;
+	tmp->x = 0;
+	tmp->y = 0;
+	tmp->z = 1;
+	mainOctTree->nodes[tmp->x][tmp->y][tmp->z] = tmp;
 	tmp = malloc(sizeof(*tmp));
+	tmp->parent = mainOctTree;
 	tmp->center = (Point3f){.5, -.5, .5};
 	tmp->radius = .5;
 	tmp->type = Empty;
-	mainOctTree->n3 = tmp;
+	tmp->x = 1;
+	tmp->y = 0;
+	tmp->z = 1;
+	mainOctTree->nodes[tmp->x][tmp->y][tmp->z] = tmp;
 	tmp = malloc(sizeof(*tmp));
+	tmp->parent = mainOctTree;
 	tmp->center = (Point3f){-.5, .5, -.5};
 	tmp->radius = .5;
 	tmp->type = Solid;
 	tmp->color = (Color3f) {0.0, 1.0, 0.0};
-	mainOctTree->n4 = tmp;
+	tmp->x = 0;
+	tmp->y = 1;
+	tmp->z = 0;
+	mainOctTree->nodes[tmp->x][tmp->y][tmp->z] = tmp;
 	tmp = malloc(sizeof(*tmp));
+	tmp->parent = mainOctTree;
 	tmp->center = (Point3f){.5, .5, -.5};
 	tmp->radius = .5;
 	tmp->type = Empty;
-	mainOctTree->n5 = tmp;
+	tmp->x = 1;
+	tmp->y = 1;
+	tmp->z = 0;
+	mainOctTree->nodes[tmp->x][tmp->y][tmp->z] = tmp;
 	tmp = malloc(sizeof(*tmp));
+	tmp->parent = mainOctTree;
 	tmp->center = (Point3f){-.5, -.5, -.5};
 	tmp->radius = .5;
 	tmp->type = Empty;
 	/*tmp->color = (Color3f) {1.0, 1.0, 0.0};*/
-	mainOctTree->n6 = tmp;
+	tmp->x = 0;
+	tmp->y = 0;
+	tmp->z = 0;
+	mainOctTree->nodes[tmp->x][tmp->y][tmp->z] = tmp;
 	tmp = malloc(sizeof(*tmp));
+	tmp->parent = mainOctTree;
 	tmp->center = (Point3f){.5, -.5, -.5};
 	tmp->radius = .5;
 	tmp->type = Empty;
-	mainOctTree->n7 = tmp;
+	tmp->x = 1;
+	tmp->y = 0;
+	tmp->z = 0;
+	mainOctTree->nodes[tmp->x][tmp->y][tmp->z] = tmp;
 }
 
 void captureOctTree(Point3f camera, Point3f target, Point3f up, int width, int height, float* data)
@@ -512,15 +588,15 @@ void captureOctTree(Point3f camera, Point3f target, Point3f up, int width, int h
 	Point3f right = vectMul(target, up);
 	Point3f bottom_left_vec = vectSum(target, vectDiv(up, -2), vectDiv(right, -2));
 
-	Point3f dright = vectDiv(right, width);
-	Point3f dup = vectDiv(up, height);
+	Point3f dright = vectDiv(right, (float)width);
+	Point3f dup = vectDiv(up, (float)height);
 
 	for (int y = 0; y < height; y++) for (int x = 0; x < width; x++)
 	{
 		Color3f color = {0.,0.,0.};
 		Point3f temp_target =
-			vectMulScalar(vectMulScalar(bottom_left_vec, dup, y), dright, x);
-		ray_cast_oct_tree(camera, temp_target, mainOctTree, &color);
+			vectMulScalar(vectMulScalar(bottom_left_vec, dup, (float)y), dright, (float)x);
+		ray_cast_oct_tree_stacking(camera, temp_target, mainOctTree, &color);
 		data[ARR_IDX(x,y,0)] = color.r;
 		data[ARR_IDX(x,y,1)] = color.g;
 		data[ARR_IDX(x,y,2)] = color.b;
