@@ -414,6 +414,12 @@ next_ray:
 
 	if (tree->type == Partial) {
 		tree = tree->nodes[local.x > 0][local.y > 0][local.z > 0];
+		// ----
+		center = (Point3f){center.x - radius / 2 + local.x * radius,
+			               center.y - radius / 2 + local.y * radius,
+						   center.z - radius / 2 + local.z * radius };
+		radius = radius / 2;
+		// ----
 		goto next_ray;
 	}
 
