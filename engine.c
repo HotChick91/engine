@@ -78,54 +78,28 @@ int epsLteP(const Point3f a, const Point3f b)
 // by value and versor plane (1 on planeth coordinate, 0 on the rest)
 int vectPlaneIntersection(Point3f origin, Point3f direction, int plane, Point3f value)
 {
-	// TODO nie ifować płaszczyzn - będzie potrzebne indexowanie zamiast .x, .y, .z
 	float dist;
-	if (plane == 0) // X = value plane
-	{
-		if (direction.x == 0
-		 || (origin.x < value.x && direction.x < 0)
-		 || (origin.x > value.x && direction.x > 0))
-			return 0;
-		dist = (value.x - origin.x) / direction.x;
-	} else if (plane == 1) // Y = value plane
-	{
-		if (direction.y == 0
-		 || (origin.y < value.y && direction.y < 0)
-		 || (origin.y > value.y && direction.y > 0))
-			return 0;
-		dist = (value.y - origin.y) / direction.y;
-	} else if (plane == 2) // Z = value plane
-	{
-		if (direction.z == 0
-		 || (origin.z < value.z && direction.z <= 0)
-		 || (origin.z > value.z && direction.z >= 0))
-			return 0;
-		dist = (value.z - origin.z) / direction.z;
-	} else {
+	float* origin_a = (float*)(&origin);
+	float* value_a = (float*)(&value);
+	float* direction_a = (float*)(&direction);
+
+	if (plane < 0 || plane >= 3) return 0;
+
+	if (direction_a[plane] == 0
+	 || (origin_a[plane] < value_a[plane] && direction_a[plane] < 0)
+	 || (origin_a[plane] > value_a[plane] && direction_a[plane] > 0))
 		return 0;
-	}
+	dist = (value_a[plane] - origin_a[plane]) / direction_a[plane];
 
 	Point3f intersect = vectMulScalar(origin, direction, dist);
+	float* intersect_a = (float*)(&intersect);
 
 	float i_1, v_1, i_2, v_2;
-	if (plane == 0) {
-		i_1 = intersect.y;
-		v_1 = value.y;
-		i_2 = intersect.z;
-		v_2 = value.z;
-	} else if (plane == 1) {
-		i_1 = intersect.x;
-		v_1 = value.x;
-		i_2 = intersect.z;
-		v_2 = value.z;
-	} else if (plane == 2) {
-		i_1 = intersect.x;
-		v_1 = value.x;
-		i_2 = intersect.y;
-		v_2 = value.y;
-	} else {
-		return 0;
-	}
+	i_1 = intersect_a[(plane + 1) % 3];
+	v_1 = value_a[(plane + 1) % 3];
+	i_2 = intersect_a[(plane + 2) % 3];
+	v_2 = value_a[(plane + 2) % 3];
+
 	if (v_1 < 0) {
 		v_1 *= -1.0f;
 		i_1 *= -1.0f;
@@ -135,14 +109,6 @@ int vectPlaneIntersection(Point3f origin, Point3f direction, int plane, Point3f 
 		i_2 *= -1.0f;
 	}
 	return epsGteF(i_1, 0) && epsLteF(i_1, v_1) && epsGteF(i_2, 0) && epsLteF(i_2, v_1);
-
-	// TODO sprawdzić który z tych wariantów jest szybszy (jeśli w ogóle jest jakakolwiek różnica)
-	/*Point3f mul = {value.x < 0 ? -1.f : 1.f, value.y < 0 ? -1.f : 1.f, value.z < 0 ? -1.f : 1.f};*/
-	/*int ret;*/
-	/*ret = epsGteP(vectScale(intersect, mul), (Point3f) {0.f, 0.f, 0.f})*/
-		/*&& epsLteP(vectScale(intersect, mul), vectScale(value, mul));*/
-	/*if (!ret) return 0;*/
-	return 1;
 }
 
 typedef struct Color3f {
@@ -372,6 +338,8 @@ int ray_cast_oct_tree_stacking(Point3f origin, Point3f direction, OctTreeNode * 
 	// if (tree->type == Partial)
 
 	Point3f local = vectMulScalar(origin, tree->center, -1);
+	float* local_a = (float*)(&local);
+	float* direction_a = (float*)(&direction);
 
 	// Check if we intersect 0-planes, and if so at what distance from origin
 	struct dist_data intersection_dist[5];
@@ -379,20 +347,12 @@ int ray_cast_oct_tree_stacking(Point3f origin, Point3f direction, OctTreeNode * 
 	intersection_dist[0].plane = -1;
 	int intersection_size = 1;
 
-	if (local.x * direction.x < 0) {
-		intersection_dist[intersection_size].dist = -1 * local.x / direction.x;
-		intersection_dist[intersection_size].plane = 0;
-		intersection_size++;
-	}
-	if (local.y * direction.y < 0) {
-		intersection_dist[intersection_size].dist = -1 * local.y / direction.y;
-		intersection_dist[intersection_size].plane = 1;
-		intersection_size++;
-	}
-	if (local.z * direction.z < 0) {
-		intersection_dist[intersection_size].dist = -1 * local.z / direction.z;
-		intersection_dist[intersection_size].plane = 2;
-		intersection_size++;
+	for (int axis = 0; axis < 3; axis++) {
+		if (local_a[axis] * direction_a[axis] < 0) {
+			intersection_dist[intersection_size].dist = -1 * local_a[axis] / direction_a[axis];
+			intersection_dist[intersection_size].plane = axis;
+			intersection_size++;
+		}
 	}
 
 	// sortowanie
@@ -403,8 +363,7 @@ int ray_cast_oct_tree_stacking(Point3f origin, Point3f direction, OctTreeNode * 
 	intersection_size++;
 
 	// we need to check each specific segment if it intersects with cube
-	for (int segment_num = 0; segment_num < intersection_size - 1; segment_num++)
-	{
+	for (int segment_num = 0; segment_num < intersection_size - 1; segment_num++) {
 		float mid_point_distance = (intersection_dist[segment_num].dist + intersection_dist[segment_num+1].dist)/2;
 		Point3f half_point = vectMulScalar(local, direction, mid_point_distance);
 
@@ -413,42 +372,23 @@ int ray_cast_oct_tree_stacking(Point3f origin, Point3f direction, OctTreeNode * 
 
 		int found = 0;
 
-		if (!found && intersection_dist[segment_num].plane >= 0)
-		{
+		if (!found && intersection_dist[segment_num].plane >= 0) {
 			Point3f begin = vectMulScalar(local, direction, intersection_dist[segment_num].dist);
-			if (intersection_dist[segment_num].plane == 0)
-				found = fabs(begin.y) <= tree->radius && fabs(begin.z) <= tree->radius;
-			else if (intersection_dist[segment_num].plane == 1)
-				found = fabs(begin.x) <= tree->radius && fabs(begin.z) <= tree->radius;
-			else if (intersection_dist[segment_num].plane == 2)
-				found = fabs(begin.x) <= tree->radius && fabs(begin.y) <= tree->radius;
+			float* begin_a = (float*)(&begin);
+			int base_axis = intersection_dist[segment_num].plane;
+			found = fabs(begin_a[ (base_axis+1)%3]) <= tree->radius
+				 && fabs(begin_a[ (base_axis+2)%3]) <= tree->radius;
 		}
-		//each end is also a begin
-		/*if (!found && intersection_dist[segment_num+1].plane >= 0)
-		{
-			Point3f end = vectMulScalar(local, direction, intersection_dist[segment_num+1].dist);
-			if (intersection_dist[segment_num+1].plane == 0)
-				found = fabs(end.y) <= tree->radius && fabs(end.z) <= tree->radius;
-			else if (intersection_dist[segment_num+1].plane == 1)
-				found = fabs(end.x) <= tree->radius && fabs(end.z) <= tree->radius;
-			else if (intersection_dist[segment_num+1].plane == 2)
-				found = fabs(end.x) <= tree->radius && fabs(end.y) <= tree->radius;
-		}*/
+		// we don't check end because each end is also a begin
 
-		if(!found){
-            found = vectPlaneIntersection(local, direction, 0, pl);
-        }
-		if(!found){
-            found = vectPlaneIntersection(local, direction, 1, pl);
-        }
-		if(!found){
-            found = vectPlaneIntersection(local, direction, 2, pl);
+		for (int axis = 0; axis < 3; axis++) {
+			if(!found){
+				found = vectPlaneIntersection(local, direction, axis, pl);
+			}
 		}
 
-		if (found) // TODO fix after mergin stackless
-		{
-			OctTreeNode * t;
-			t = tree->nodes[half_point.x > 0][half_point.y > 0][half_point.z > 0];
+		if (found) {
+			OctTreeNode * t = tree->nodes[half_point.x > 0][half_point.y > 0][half_point.z > 0];
 			int ret = ray_cast_oct_tree_stacking(origin, direction, t, color);
 			if (ret) return 1;
 		}
