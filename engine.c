@@ -136,10 +136,11 @@ struct OctTreeNode {
 Point3f camera_pos = {0.89f,-0.98f,-0.25f};
 Point3f camera_target = {0.0f,1.0f,0.0f};
 Point3f up = {0.f, 0.f, 1.f};
+Point3f light = {1.0f, -2.0f, 0.0f};
 float horizontal_angle = 2.0;
 float vertical_angle = 0.0;
 
-enum RenderMethod {Stacking, Stackless} render_method = Stacking;
+enum RenderMethod {Stacking, Stackless} render_method = Stackless;
 
 OctTreeNode * mainOctTree;
 
@@ -170,7 +171,7 @@ int main(void)
 
 	/* Make the window's context current */
 	glfwMakeContextCurrent(window);
-
+	glfwSetInputMode(window, GLFW_STICKY_MOUSE_BUTTONS, 1);
 	glfwSetKeyCallback(window, key_callback);
 
 	//**************************** generowanie przykładowych piksli
@@ -184,6 +185,8 @@ int main(void)
 
 	//****************************
 
+	double last_xpos, last_ypos;
+
 	/* Loop until the user closes the window */
 	while (!glfwWindowShouldClose(window))
 	{
@@ -191,6 +194,20 @@ int main(void)
 		for (int i = 0; i < height * width * 3; i++)
 			piksele[i] = 0.0;
 
+		double xpos, ypos;
+		glfwGetCursorPos(window, &xpos, &ypos);
+		xpos -= last_xpos;
+		ypos -= last_ypos;
+		last_xpos += xpos;
+		last_ypos += ypos;
+		if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_1) == GLFW_PRESS) {
+			const double alpha = 0.001;
+			horizontal_angle += xpos * alpha;
+			vertical_angle += ypos * alpha;
+			camera_target = (Point3f) { cosf(horizontal_angle) * cosf(vertical_angle)
+									  , sinf(horizontal_angle) * cosf(vertical_angle)
+									  , sinf(vertical_angle)};
+		}
 		clock_t start = clock();
 		captureOctTree(camera_pos, camera_target, up, width, height, piksele);
 		clock_t end = clock();
@@ -267,6 +284,9 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
 			case GLFW_KEY_J:
 				horizontal_angle += 0.05f;
 				break;
+			case GLFW_KEY_M:
+				light = vectMulScalar(camera_pos, camera_target, 1.f);
+				break;
 			case GLFW_KEY_P:
 				printf("Current rendering method is: ");
 				if (render_method == Stacking) {
@@ -324,6 +344,17 @@ OctTreeNode *maybeSibling(OctTreeNode *tree, int dx, int dy, int dz)
 	return tree->parent->nodes[nx][ny][nz];
 }
 
+void calculate_light(Point3f p, Color3f * color)
+{
+	float l_dist2 = (light.x - p.x) * (light.x - p.x )
+				  + (light.y - p.y) * (light.y - p.y )
+				  + (light.z - p.z) * (light.z - p.z );
+	float intensity = 2.0 / (2.0 + l_dist2);
+	color->r *= intensity;
+	color->g *= intensity;
+	color->b *= intensity;
+}
+
 int ray_cast_oct_tree_stacking(Point3f origin, Point3f direction, OctTreeNode * tree, float radius, Point3f center,  Color3f * color)
 {
 	// TODO check if origin inside tree?
@@ -333,7 +364,7 @@ int ray_cast_oct_tree_stacking(Point3f origin, Point3f direction, OctTreeNode * 
 		return 0;
 	if (tree->type == Solid) {
 		*color = tree->color;
-		return 1;
+		return 2;
 	}
 	// if (tree->type == Partial)
 
@@ -367,7 +398,10 @@ int ray_cast_oct_tree_stacking(Point3f origin, Point3f direction, OctTreeNode * 
 		float mid_point_distance = (intersection_dist[segment_num].dist + intersection_dist[segment_num+1].dist)/2;
 		Point3f half_point = vectMulScalar(local, direction, mid_point_distance);
 
+		Point3f final_collision;
+
 		Point3f oct = {half_point.x < 0. ? -1 : 1, half_point.y < 0. ? -1 : 1, half_point.z < 0. ? -1 : 1};
+		float* oct_a = (float*)(&oct);
 		Point3f pl = {radius * oct.x, radius * oct.y, radius * oct.z};
 
 		int found = 0;
@@ -378,12 +412,18 @@ int ray_cast_oct_tree_stacking(Point3f origin, Point3f direction, OctTreeNode * 
 			int base_axis = intersection_dist[segment_num].plane;
 			found = fabs(begin_a[ (base_axis+1)%3]) <= radius
 				 && fabs(begin_a[ (base_axis+2)%3]) <= radius;
+			if (found) {
+				final_collision = begin;
+			}
 		}
-		// we don't check end because each end is also a begin
 
 		for (int axis = 0; axis < 3; axis++) {
-			if(!found){
+			if(!found && direction_a[axis] * oct_a[axis] < 0 ){
 				found = vectPlaneIntersection(local, direction, axis, pl);
+				if(found) {
+					float dist = (tree->radius - local_a[axis]) / direction_a[axis];
+					final_collision = vectMulScalar(local, direction, dist);
+				}
 			}
 		}
 
@@ -396,6 +436,10 @@ int ray_cast_oct_tree_stacking(Point3f origin, Point3f direction, OctTreeNode * 
 			new_pos.z = center.z + (radius/2) * oct.z;
 			// ----
 			int ret = ray_cast_oct_tree_stacking(origin, direction, t, radius/2, new_pos,  color);
+			if (ret == 2)
+			{
+				calculate_light(final_collision, color);
+			}
 			if (ret) return 1;
 		}
 	}
@@ -428,6 +472,7 @@ next_ray:
 
 	if (tree->type == Solid) {
 		*color = tree->color;
+		calculate_light(origin, color);
 		return;
 	}
 
