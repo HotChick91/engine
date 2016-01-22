@@ -171,7 +171,7 @@ int main(void)
 
 	/* Make the window's context current */
 	glfwMakeContextCurrent(window);
-
+	glfwSetInputMode(window, GLFW_STICKY_MOUSE_BUTTONS, 1);
 	glfwSetKeyCallback(window, key_callback);
 
 	//**************************** generowanie przykładowych piksli
@@ -185,6 +185,8 @@ int main(void)
 
 	//****************************
 
+	double last_xpos, last_ypos;
+
 	/* Loop until the user closes the window */
 	while (!glfwWindowShouldClose(window))
 	{
@@ -192,6 +194,20 @@ int main(void)
 		for (int i = 0; i < height * width * 3; i++)
 			piksele[i] = 0.0;
 
+		double xpos, ypos;
+		glfwGetCursorPos(window, &xpos, &ypos);
+		xpos -= last_xpos;
+		ypos -= last_ypos;
+		last_xpos += xpos;
+		last_ypos += ypos;
+		if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_1) == GLFW_PRESS) {
+			const double alpha = 0.001;
+			horizontal_angle += xpos * alpha;
+			vertical_angle += ypos * alpha;
+			camera_target = (Point3f) { cosf(horizontal_angle) * cosf(vertical_angle)
+									  , sinf(horizontal_angle) * cosf(vertical_angle)
+									  , sinf(vertical_angle)};
+		}
 		clock_t start = clock();
 		captureOctTree(camera_pos, camera_target, up, width, height, piksele);
 		clock_t end = clock();
