@@ -270,7 +270,7 @@ int main(void)
     printf("#platforms: %d\n", num_platforms);
     cl_context_properties props[] = {CL_CONTEXT_PLATFORM, (cl_context_properties)platform_id, 0};
 
-    char info[5][128];
+    char info[4][128];
     status = clGetPlatformInfo(platform_id, CL_PLATFORM_PROFILE, 128, info[0], NULL);
     check_cl(status, "get platform profile");
     status = clGetPlatformInfo(platform_id, CL_PLATFORM_VERSION, 128, info[1], NULL);
@@ -291,7 +291,11 @@ int main(void)
     cl_device_id device_id;
     status = clGetDeviceIDs(platform_id, CL_DEVICE_TYPE_GPU, 1, &device_id, NULL);
     check_cl(status, "get device ids");
+#if CL_VERSION_2_0
     queue = clCreateCommandQueueWithProperties(context, device_id, NULL, &status);
+#else
+    queue = clCreateCommandQueueWithProperties(context, device_id, 0, &status);
+#endif
     check_cl(status, "create command queue");
 
     // allocate memory objects
@@ -324,11 +328,7 @@ int main(void)
     size_t n_bytes = fread(kernel_src, 1, 10239, kernel_handle);
     kernel_src[n_bytes] = '\0';
     check_ferror(kernel_handle, "fread");
-#if CL_VERSION_2_0
     cl_program program = clCreateProgramWithSource(context, 1, &kernel_src, NULL, &status);
-#else
-    cl_program program = clCreateProgram(context, 1, &kernel_src, 0, &status);
-#endif
     check_cl(status, "create program");
 
     // build the compute program executable
