@@ -4,13 +4,43 @@
 #include <stdlib.h>
 #include <time.h>
 
-#define ARR_IDX(x, y, col) (((y) * width + (x)) * 3) + (col)
+#ifndef TRACER_CL
+#define TRACER_CL 1
+#endif
 
+#if TRACER_CL
+#include <CL/cl.h>
+#endif
+
+#define ARR_IDX(x, y, col) ((((y) * width + (x)) * 3) + (col))
+#define ARR_IDX4(x, y, col) ((((y) * width + (x)) * 4) + (col))
 typedef struct Point3f {
 	float x;
 	float y;
 	float z;
 } Point3f;
+
+typedef struct Color4f {
+    float r;
+    float g;
+    float b;
+    float a;
+} Color4f;
+
+//enum OctTreeNodeType { Empty, Solid, Partial };
+#define Empty 0
+#define Solid 1
+#define Partial 2
+
+typedef struct OctTreeNode {
+    char x, y, z;
+    char type;
+    int parent;
+    union {
+        Color4f color;
+        int nodes[2][2][2];
+    };
+} OctTreeNode;
 
 Point3f vectMul(Point3f a, Point3f b)
 {
@@ -55,7 +85,7 @@ int cmpDistData(const void * a, const void * b)
 const float eps = 0.000001f;
 int epsEq(const float a, const float b)
 {
-	return fabs(a - b) < eps; // Not necessarily great numerically
+    return fabsf(a - b) < eps; // Not necessarily great numerically
 }
 int epsGteF(const float a, const float b)
 {
@@ -88,7 +118,7 @@ int vectPlaneIntersection(Point3f origin, Point3f direction, int plane, Point3f 
 	if (direction_a[plane] == 0
 	 || (origin_a[plane] < value_a[plane] && direction_a[plane] < 0)
 	 || (origin_a[plane] > value_a[plane] && direction_a[plane] > 0))
-		return 0;
+			return 0;
 	dist = (value_a[plane] - origin_a[plane]) / direction_a[plane];
 
 	Point3f intersect = vectMulScalar(origin, direction, dist);
@@ -111,28 +141,6 @@ int vectPlaneIntersection(Point3f origin, Point3f direction, int plane, Point3f 
 	return epsGteF(i_1, 0) && epsLteF(i_1, v_1) && epsGteF(i_2, 0) && epsLteF(i_2, v_1);
 }
 
-typedef struct Color3f {
-	float r;
-	float g;
-	float b;
-} Color3f;
-
-enum OctTreeNodeType {Empty, Solid, Partial}; // TODO owrapować to ładnie, żeby nie robić syfu w top lvl
-
-typedef struct OctTreeNode OctTreeNode;
-
-struct OctTreeNode {
-	int x, y, z;
-	OctTreeNode *parent;
-	Point3f center; // center point of cube
-	float radius; // cube radius
-	enum OctTreeNodeType type;
-	union {
-		Color3f color;
-		OctTreeNode *nodes[2][2][2];
-	};
-};
-
 Point3f camera_pos = {0.89f,-0.98f,-0.25f};
 Point3f camera_target = {0.0f,1.0f,0.0f};
 Point3f up = {0.f, 0.f, 1.f};
@@ -140,7 +148,7 @@ Point3f light = {1.0f, -2.0f, 0.0f};
 float horizontal_angle = 2.0;
 float vertical_angle = 0.0;
 
-enum RenderMethod {Stacking, Stackless} render_method = Stackless;
+enum RenderMethod {Stacking, Stackless, TracerCL} render_method = Stacking;
 
 OctTreeNode * mainOctTree;
 
@@ -149,11 +157,42 @@ static void key_callback(GLFWwindow* windows, int key, int scancode, int action,
 void initOctTree();
 void captureOctTree(Point3f camera, Point3f target, Point3f up, int width, int height, float* data);
 
+void die(char *context, char *detail, int code) {
+    fprintf(stderr, "FATAL ERROR: %s: %s (%d)\n", context, detail, code);
+    exit(1);
+}
+
+void check_nn(void *ptr, char *msg) {
+    if (ptr == NULL)
+        die(msg, "null", 0);
+}
+
+void check_ferror(FILE *stream, char *msg) {
+    int errord = ferror(stream);
+    if (errord)
+        die(msg, "ferror", errord);
+}
+
+#if TRACER_CL
+void check_cl(cl_int status, char *msg) {
+    if (status != CL_SUCCESS)
+        die(msg, "opencl error", status);
+}
+
+cl_command_queue queue;
+cl_kernel kernel;
+cl_mem mainOctCL;
+cl_mem image;
+#endif
+
+GLFWwindow* window;
+const int height = 1024;
+const int width = 1024;
+float *data4;
+
 int main(void)
 {
 	glfwSetErrorCallback(error_callback);
-
-	GLFWwindow* window;
 
 	/* Initialize the library */
 	if (!glfwInit()){
@@ -162,7 +201,7 @@ int main(void)
 	}
 
 	/* Create a windowed mode window and its OpenGL context */
-	window = glfwCreateWindow(500, 500, "Hello World", NULL, NULL);
+    window = glfwCreateWindow(width, height, "Hello World", NULL, NULL);
 	if (!window) {
 		glfwTerminate();
 		fprintf(stderr, "Error creating window.\n");
@@ -179,14 +218,109 @@ int main(void)
 	camera_target = (Point3f) { cosf(horizontal_angle) * cosf(vertical_angle)
 							  , sinf(horizontal_angle) * cosf(vertical_angle)
 							  , sinf(vertical_angle)};
-	const int height = 500;
-	const int width = 500;
 	float * piksele = malloc(height*width*3*sizeof(*piksele));
+
+    printf("sizeof(OctTreeNode)=%zd\n", sizeof(OctTreeNode));
 
 	//****************************
 
-	double last_xpos, last_ypos;
+#if TRACER_CL
+    // prepare your anus
+    // i mean gpu
+    cl_int status;
+    cl_platform_id platform_id;
+    cl_int num_platforms;
+    char *kernel_src = malloc(10240);
+    check_nn(kernel_src, "kernel_src");
+    status = clGetPlatformIDs(1, &platform_id, &num_platforms);
+    check_cl(status, "get platform ids");
+    printf("#platforms: %d\n", num_platforms);
+    cl_context_properties props[] = {CL_CONTEXT_PLATFORM, (cl_context_properties)platform_id, 0};
 
+    char info[4][128];
+    status = clGetPlatformInfo(platform_id, CL_PLATFORM_PROFILE, 128, info[0], NULL);
+    check_cl(status, "get platform profile");
+    status = clGetPlatformInfo(platform_id, CL_PLATFORM_VERSION, 128, info[1], NULL);
+    check_cl(status, "get platform version");
+    status = clGetPlatformInfo(platform_id, CL_PLATFORM_NAME, 128, info[2], NULL);
+    check_cl(status, "get platform name");
+    status = clGetPlatformInfo(platform_id, CL_PLATFORM_VENDOR, 128, info[3], NULL);
+    check_cl(status, "get platform vendor");
+    printf("profile: %s\n", info[0]);
+    printf("version: %s\n", info[1]);
+    printf("name: %s\n", info[2]);
+    printf("vendor: %s\n", info[3]);
+
+    cl_context context = clCreateContextFromType(props, CL_DEVICE_TYPE_GPU, NULL, NULL, &status);
+    check_cl(status, "create context");
+
+    // create a command queue
+    cl_device_id device_id;
+    status = clGetDeviceIDs(platform_id, CL_DEVICE_TYPE_GPU, 1, &device_id, NULL);
+    check_cl(status, "get device ids");
+#if CL_VERSION_2_0
+    queue = clCreateCommandQueueWithProperties(context, device_id, NULL, &status);
+#else
+    queue = clCreateCommandQueue(context, device_id, 0, &status);
+#endif
+    check_cl(status, "create command queue");
+
+    // allocate memory objects
+    mainOctCL = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, 9*sizeof(OctTreeNode), mainOctTree, &status);
+    check_cl(status, "create buffer");
+    cl_image_format fmt = { CL_RGBA, CL_FLOAT };
+    cl_image_desc desc;
+    desc.image_type = CL_MEM_OBJECT_IMAGE2D;
+    desc.image_width = width;
+    desc.image_height = height;
+    desc.image_row_pitch = 0;
+    desc.image_slice_pitch = 0;
+    desc.num_mip_levels = 0;
+    desc.num_samples = 0;
+#if CL_VERSION_2_0
+    desc.mem_object = NULL;
+#else
+    desc.buffer = NULL;
+#endif
+    image = clCreateImage(context, CL_MEM_WRITE_ONLY, &fmt, &desc, NULL, &status);
+    check_cl(status, "create image");
+
+    data4 = malloc(width * height * 4 * sizeof(*data4));
+    check_nn(data4, "data4");
+
+    // create the compute program
+    FILE *kernel_handle;
+    fopen_s(&kernel_handle, "ray.cl", "rb");
+    check_nn(kernel_handle, "fopen ray.cl");
+    size_t n_bytes = fread(kernel_src, 1, 10239, kernel_handle);
+    kernel_src[n_bytes] = '\0';
+    check_ferror(kernel_handle, "fread");
+    cl_program program = clCreateProgramWithSource(context, 1, &kernel_src, NULL, &status);
+    check_cl(status, "create program");
+
+    // build the compute program executable
+    status = clBuildProgram(program, 0, NULL, NULL, NULL, NULL);
+    if (status != CL_BUILD_PROGRAM_FAILURE && status != CL_SUCCESS) {
+        check_cl(status, "build program");
+    } else {
+        size_t log_size;
+        status = clGetProgramBuildInfo(program, device_id, CL_PROGRAM_BUILD_LOG, 0, NULL, &log_size);
+        check_cl(status, "get program build log size");
+
+        char *log = malloc(log_size);
+        check_nn(log, "log");
+
+        status = clGetProgramBuildInfo(program, device_id, CL_PROGRAM_BUILD_LOG, log_size, log, NULL);
+        check_cl(status, "get program build log");
+
+        fprintf(stderr, "build kernel log:\n%s\n", log);
+    }
+
+    // create the compute kernel
+    kernel = clCreateKernel(program, "ray_cl", &status);
+    check_cl(status, "create kernel");
+#endif
+    double last_xpos = 0, last_ypos = 0;
 	/* Loop until the user closes the window */
 	while (!glfwWindowShouldClose(window))
 	{
@@ -202,8 +336,8 @@ int main(void)
 		last_ypos += ypos;
 		if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_1) == GLFW_PRESS) {
 			const double alpha = 0.001;
-			horizontal_angle += xpos * alpha;
-			vertical_angle += ypos * alpha;
+			horizontal_angle += (float)(xpos * alpha);
+			vertical_angle += (float)(ypos * alpha);
 			camera_target = (Point3f) { cosf(horizontal_angle) * cosf(vertical_angle)
 									  , sinf(horizontal_angle) * cosf(vertical_angle)
 									  , sinf(vertical_angle)};
@@ -240,6 +374,14 @@ int main(void)
 		glfwPollEvents();
 	}
 
+#if TRACER_CL
+    clReleaseMemObject(mainOctCL);
+    clReleaseMemObject(image);
+    clReleaseProgram(program);
+    clReleaseKernel(kernel);
+    clReleaseCommandQueue(queue);
+    clReleaseContext(context);
+#endif
 	glfwDestroyWindow(window);
 
 	glfwTerminate();
@@ -292,8 +434,12 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
 				if (render_method == Stacking) {
 					render_method = Stackless;
 					printf("Stackless");
-				}
-				else {
+#if TRACER_CL
+                } else if (render_method == Stackless) {
+                    render_method = TracerCL;
+                    printf("TracerCL");
+#endif
+                } else {
 					render_method = Stacking;
 					printf("Stacking");
 				}
@@ -341,21 +487,21 @@ OctTreeNode *maybeSibling(OctTreeNode *tree, int dx, int dy, int dz)
 	int nz = tree->z + dz;
 	if ((nx | ny | nz) & (~1))
 		return NULL;
-	return tree->parent->nodes[nx][ny][nz];
+    return mainOctTree + mainOctTree[tree->parent].nodes[nx][ny][nz];
 }
 
-void calculate_light(Point3f p, Color3f * color)
+void calculate_light(Point3f p, Color4f * color)
 {
 	float l_dist2 = (light.x - p.x) * (light.x - p.x )
 				  + (light.y - p.y) * (light.y - p.y )
 				  + (light.z - p.z) * (light.z - p.z );
-	float intensity = 2.0 / (2.0 + l_dist2);
+	float intensity = 2.f / (2.f + l_dist2);
 	color->r *= intensity;
 	color->g *= intensity;
 	color->b *= intensity;
 }
 
-int ray_cast_oct_tree_stacking(Point3f origin, Point3f direction, OctTreeNode * tree, Color3f * color)
+int ray_cast_oct_tree_stacking(Point3f origin, Point3f direction, OctTreeNode * tree, float radius, Point3f center, Color4f * color)
 {
 	// TODO check if origin inside tree?
 	// TODO ładnie się wywalić jak tree == Null
@@ -368,7 +514,7 @@ int ray_cast_oct_tree_stacking(Point3f origin, Point3f direction, OctTreeNode * 
 	}
 	// if (tree->type == Partial)
 
-	Point3f local = vectMulScalar(origin, tree->center, -1);
+	Point3f local = vectMulScalar(origin, center, -1);
 	float* local_a = (float*)(&local);
 	float* direction_a = (float*)(&direction);
 
@@ -378,40 +524,40 @@ int ray_cast_oct_tree_stacking(Point3f origin, Point3f direction, OctTreeNode * 
 	intersection_dist[0].plane = -1;
 	int intersection_size = 1;
 
-	for (int axis = 0; axis < 3; axis++) {
-		if (local_a[axis] * direction_a[axis] < 0) {
-			intersection_dist[intersection_size].dist = -1 * local_a[axis] / direction_a[axis];
-			intersection_dist[intersection_size].plane = axis;
-			intersection_size++;
-		}
+    for (int axis = 0; axis < 3; axis++) {
+        if (local_a[axis] * direction_a[axis] < 0) {
+            intersection_dist[intersection_size].dist = -1 * local_a[axis] / direction_a[axis];
+            intersection_dist[intersection_size].plane = axis;
+		intersection_size++;
+	}
 	}
 
 	// sortowanie
 	qsort(intersection_dist, intersection_size, sizeof(*intersection_dist), cmpDistData);
 	// aditional point for last intersection check
-	intersection_dist[intersection_size].dist = intersection_dist[intersection_size-1].dist + 1.;
+    intersection_dist[intersection_size].dist = intersection_dist[intersection_size-1].dist + 1.f;
 	intersection_dist[intersection_size].plane = -1;
 	intersection_size++;
 
 	// we need to check each specific segment if it intersects with cube
-	for (int segment_num = 0; segment_num < intersection_size - 1; segment_num++) {
+    for (int segment_num = 0; segment_num < intersection_size - 1; segment_num++) {
 		float mid_point_distance = (intersection_dist[segment_num].dist + intersection_dist[segment_num+1].dist)/2;
 		Point3f half_point = vectMulScalar(local, direction, mid_point_distance);
 
 		Point3f final_collision;
 
-		Point3f oct = {half_point.x < 0. ? -1 : 1, half_point.y < 0. ? -1 : 1, half_point.z < 0. ? -1 : 1};
+		Point3f oct = {half_point.x < 0. ? -1.f : 1.f, half_point.y < 0. ? -1.f : 1.f, half_point.z < 0. ? -1.f : 1.f};
 		float* oct_a = (float*)(&oct);
-		Point3f pl = {tree->radius * oct.x, tree->radius * oct.y, tree->radius * oct.z};
+		Point3f pl = {radius * oct.x, radius * oct.y, radius * oct.z};
 
 		int found = 0;
 
-		if (!found && intersection_dist[segment_num].plane >= 0) {
+        if (!found && intersection_dist[segment_num].plane >= 0) {
 			Point3f begin = vectMulScalar(local, direction, intersection_dist[segment_num].dist);
 			float* begin_a = (float*)(&begin);
 			int base_axis = intersection_dist[segment_num].plane;
-			found = fabs(begin_a[ (base_axis+1)%3]) <= tree->radius
-				 && fabs(begin_a[ (base_axis+2)%3]) <= tree->radius;
+			found = fabsf(begin_a[ (base_axis+1)%3]) <= radius
+				 && fabsf(begin_a[ (base_axis+2)%3]) <= radius;
 			if (found) {
 				final_collision = begin;
 			}
@@ -421,15 +567,19 @@ int ray_cast_oct_tree_stacking(Point3f origin, Point3f direction, OctTreeNode * 
 			if(!found && direction_a[axis] * oct_a[axis] < 0 ){
 				found = vectPlaneIntersection(local, direction, axis, pl);
 				if(found) {
-					float dist = (tree->radius - local_a[axis]) / direction_a[axis];
+					float dist = (radius - local_a[axis]) / direction_a[axis];
 					final_collision = vectMulScalar(local, direction, dist);
 				}
-			}
+        }
 		}
 
 		if (found) {
-			OctTreeNode * t = tree->nodes[half_point.x > 0][half_point.y > 0][half_point.z > 0];
-			int ret = ray_cast_oct_tree_stacking(origin, direction, t, color);
+			OctTreeNode * t = mainOctTree + tree->nodes[half_point.x > 0][half_point.y > 0][half_point.z > 0];
+            Point3f new_pos;
+            new_pos.x = center.x + (radius / 2.f) * oct.x;
+            new_pos.y = center.y + (radius / 2.f) * oct.y;
+            new_pos.z = center.z + (radius / 2.f) * oct.z;
+			int ret = ray_cast_oct_tree_stacking(origin, direction, t, radius/2.f, new_pos, color);
 			if (ret == 2)
 			{
 				calculate_light(final_collision, color);
@@ -440,18 +590,32 @@ int ray_cast_oct_tree_stacking(Point3f origin, Point3f direction, OctTreeNode * 
 	return 0;
 }
 
-void ray_cast_oct_tree_stackless(Point3f origin, Point3f direction, OctTreeNode * tree, Color3f * color)
+void ray_cast_oct_tree_stackless(Point3f origin, Point3f direction, OctTreeNode * tree, Color4f * color)
 {
 	Point3f local, new_local;
 	float xdist, ydist, zdist;
 	int dx, dy, dz;
 
+    Point3f center = (Point3f) { 0, 0, 0 };
+    float radius = 1;
+
 next_ray:
 
-	local = vectMulScalar(origin, tree->center, -1);
+    local = vectMulScalar(origin, center, -1);
 
 	if (tree->type == Partial) {
-		tree = tree->nodes[local.x > 0][local.y > 0][local.z > 0];
+
+        dx = local.x > 0;
+        dy = local.y > 0;
+        dz = local.z > 0;
+        tree = mainOctTree + tree->nodes[dx][dy][dz];
+
+        radius /= 2.f;
+        center = (Point3f) {
+            center.x + (2 * dx - 1) * radius,
+                center.y + (2 * dy - 1) * radius,
+                center.z + (2 * dz - 1) * radius
+        };
 		goto next_ray;
 	}
 
@@ -462,11 +626,11 @@ next_ray:
 	}
 
 	// to prevent bad things that potentially could happen due to numerical errors
-	clamp(&local, tree->radius);
+    clamp(&local, radius);
 
-	xdist = MAX((tree->radius - local.x) / direction.x, (-tree->radius - local.x) / direction.x);
-	ydist = MAX((tree->radius - local.y) / direction.y, (-tree->radius - local.y) / direction.y);
-	zdist = MAX((tree->radius - local.z) / direction.z, (-tree->radius - local.z) / direction.z);
+    xdist = MAX((radius - local.x) / direction.x, (-radius - local.x) / direction.x);
+    ydist = MAX((radius - local.y) / direction.y, (-radius - local.y) / direction.y);
+    zdist = MAX((radius - local.z) / direction.z, (-radius - local.z) / direction.z);
 	dx = 0, dy = 0, dz = 0;
 	if (xdist < ydist && xdist < zdist) {
 		new_local = vectMulScalar(local, direction, xdist);
@@ -479,103 +643,96 @@ next_ray:
 		dz = direction.z > 0 ? 1 : -1;
 	}
 
-	while (tree->parent != NULL) {
+    while (tree->parent != -1) {
 		OctTreeNode *sibling = maybeSibling(tree, dx, dy, dz);
 		if (sibling != NULL) {
-			origin = vectMulScalar(new_local, tree->center, 1);
+            origin = vectMulScalar(new_local, center, 1);
 			tree = sibling;
+
+            // radius stays the same
+            center = (Point3f) { center.x + (2 * dx) * radius,
+                                 center.y + (2 * dy) * radius,
+                                 center.z + (2 * dz) * radius };
+
 			goto next_ray;
 		}
-		tree = tree->parent;
+        center = (Point3f) {
+            center.x - (2 * tree->x - 1) * radius,
+                center.y - (2 * tree->y - 1) * radius,
+                center.z - (2 * tree->z - 1) * radius
+        };
+        radius *= 2.f;
+        tree = mainOctTree + tree->parent;
+    }
+    color->r = color->g = color->b = color->a = 0;
 	}
 
-	color->r = color->g = color->b = 0;
-}
 void initOctTree()
 {
-	mainOctTree = malloc(sizeof(*mainOctTree));
-	mainOctTree->parent = NULL;
-	mainOctTree->center = (Point3f){0.,0.,0.};
-	mainOctTree->radius = 1.;
+    mainOctTree = malloc(9*sizeof(*mainOctTree));
+    mainOctTree->parent = -1;
 	mainOctTree->type = Partial;
-	OctTreeNode* tmp;
-	tmp = malloc(sizeof(*tmp));
-	tmp->parent = mainOctTree;
-	tmp->center = (Point3f){-.5, .5, .5};
-	tmp->radius = .5;
-	tmp->type = Solid;
-	tmp->color = (Color3f) {0.0, 0.0, 1.0};
-	tmp->x = 0;
-	tmp->y = 1;
-	tmp->z = 1;
-	mainOctTree->nodes[tmp->x][tmp->y][tmp->z] = tmp;
-	tmp = malloc(sizeof(*tmp));
-	tmp->parent = mainOctTree;
-	tmp->center = (Point3f){.5, .5, .5};
-	tmp->radius = .5;
-	tmp->type = Solid;
-	tmp->color = (Color3f) {1.0, 0.0, 0.0};
-	tmp->x = 1;
-	tmp->y = 1;
-	tmp->z = 1;
-	mainOctTree->nodes[tmp->x][tmp->y][tmp->z] = tmp;
-	tmp = malloc(sizeof(*tmp));
-	tmp->parent = mainOctTree;
-	tmp->center = (Point3f){-.5, -.5, .5};
-	tmp->radius = .5;
-	tmp->type = Solid;
-	tmp->color = (Color3f) {1.0, 0.0, 1.0};
-	tmp->x = 0;
-	tmp->y = 0;
-	tmp->z = 1;
-	mainOctTree->nodes[tmp->x][tmp->y][tmp->z] = tmp;
-	tmp = malloc(sizeof(*tmp));
-	tmp->parent = mainOctTree;
-	tmp->center = (Point3f){.5, -.5, .5};
-	tmp->radius = .5;
-	tmp->type = Empty;
-	tmp->x = 1;
-	tmp->y = 0;
-	tmp->z = 1;
-	mainOctTree->nodes[tmp->x][tmp->y][tmp->z] = tmp;
-	tmp = malloc(sizeof(*tmp));
-	tmp->parent = mainOctTree;
-	tmp->center = (Point3f){-.5, .5, -.5};
-	tmp->radius = .5;
-	tmp->type = Solid;
-	tmp->color = (Color3f) {0.0, 1.0, 0.0};
-	tmp->x = 0;
-	tmp->y = 1;
-	tmp->z = 0;
-	mainOctTree->nodes[tmp->x][tmp->y][tmp->z] = tmp;
-	tmp = malloc(sizeof(*tmp));
-	tmp->parent = mainOctTree;
-	tmp->center = (Point3f){.5, .5, -.5};
-	tmp->radius = .5;
-	tmp->type = Empty;
-	tmp->x = 1;
-	tmp->y = 1;
-	tmp->z = 0;
-	mainOctTree->nodes[tmp->x][tmp->y][tmp->z] = tmp;
-	tmp = malloc(sizeof(*tmp));
-	tmp->parent = mainOctTree;
-	tmp->center = (Point3f){-.5, -.5, -.5};
-	tmp->radius = .5;
-	tmp->type = Empty;
-	/*tmp->color = (Color3f) {1.0, 1.0, 0.0};*/
-	tmp->x = 0;
-	tmp->y = 0;
-	tmp->z = 0;
-	mainOctTree->nodes[tmp->x][tmp->y][tmp->z] = tmp;
-	tmp = malloc(sizeof(*tmp));
-	tmp->parent = mainOctTree;
-	tmp->center = (Point3f){.5, -.5, -.5};
-	tmp->radius = .5;
-	tmp->type = Empty;
-	tmp->x = 1;
-	tmp->y = 0;
-	tmp->z = 0;
-	mainOctTree->nodes[tmp->x][tmp->y][tmp->z] = tmp;
+    OctTreeNode tmp;
+    tmp.parent = 0;
+    tmp.type = Solid;
+    tmp.color = (Color4f) {0.0, 0.0, 1.0, 0.0};
+    tmp.x = 0;
+    tmp.y = 1;
+    tmp.z = 1;
+    mainOctTree[0].nodes[tmp.x][tmp.y][tmp.z] = 1;
+    mainOctTree[1] = tmp;
+    tmp.parent = 0;
+    tmp.type = Solid;
+    tmp.color = (Color4f) {1.0, 0.0, 0.0, 0.0};
+    tmp.x = 1;
+    tmp.y = 1;
+    tmp.z = 1;
+    mainOctTree[0].nodes[tmp.x][tmp.y][tmp.z] = 2;
+    mainOctTree[2] = tmp;
+    tmp.parent = 0;
+    tmp.type = Solid;
+    tmp.color = (Color4f) {1.0, 0.0, 1.0, 0.0};
+    tmp.x = 0;
+    tmp.y = 0;
+    tmp.z = 1;
+    mainOctTree[0].nodes[tmp.x][tmp.y][tmp.z] = 3;
+    mainOctTree[3] = tmp;
+    tmp.parent = 0;
+    tmp.type = Empty;
+    tmp.x = 1;
+    tmp.y = 0;
+    tmp.z = 1;
+    mainOctTree[0].nodes[tmp.x][tmp.y][tmp.z] = 4;
+    mainOctTree[4] = tmp;
+    tmp.parent = 0;
+    tmp.type = Solid;
+    tmp.color = (Color4f) {0.0, 1.0, 0.0, 0.0};
+    tmp.x = 0;
+    tmp.y = 1;
+    tmp.z = 0;
+    mainOctTree[0].nodes[tmp.x][tmp.y][tmp.z] = 5;
+    mainOctTree[5] = tmp;
+    tmp.parent = 0;
+    tmp.type = Empty;
+    tmp.x = 1;
+    tmp.y = 1;
+    tmp.z = 0;
+    mainOctTree[0].nodes[tmp.x][tmp.y][tmp.z] = 6;
+    mainOctTree[6] = tmp;
+    tmp.parent = 0;
+    tmp.type = Empty;
+    tmp.x = 0;
+    tmp.y = 0;
+    tmp.z = 0;
+    mainOctTree[0].nodes[tmp.x][tmp.y][tmp.z] = 7;
+    mainOctTree[7] = tmp;
+    tmp.parent = 0;
+    tmp.type = Empty;
+    tmp.x = 1;
+    tmp.y = 0;
+    tmp.z = 0;
+    mainOctTree[0].nodes[tmp.x][tmp.y][tmp.z] = 8;
+    mainOctTree[8] = tmp;
 }
 
 void captureOctTree(Point3f camera, Point3f target, Point3f up, int width, int height, float* data)
@@ -590,18 +747,64 @@ void captureOctTree(Point3f camera, Point3f target, Point3f up, int width, int h
 	Point3f dright = vectDiv(right, (float)width);
 	Point3f dup = vectDiv(up, (float)height);
 
+#if TRACER_CL
+    if (render_method == TracerCL) {
+        // set the args values
+        cl_int status;
+        status = clSetKernelArg(kernel, 0, sizeof(cl_float3), &camera);
+        check_cl(status, "set arg 0");
+        status = clSetKernelArg(kernel, 1, sizeof(cl_float3), &light);
+        check_cl(status, "set arg 1");
+        status = clSetKernelArg(kernel, 2, sizeof(cl_float3), &bottom_left_vec);
+        check_cl(status, "set arg 1");
+        status = clSetKernelArg(kernel, 3, sizeof(cl_float3), &dup);
+        check_cl(status, "set arg 2");
+        status = clSetKernelArg(kernel, 4, sizeof(cl_float3), &dright);
+        check_cl(status, "set arg 3");
+        status = clSetKernelArg(kernel, 5, sizeof(cl_mem), &mainOctCL);
+        check_cl(status, "set arg 4");
+        status = clSetKernelArg(kernel, 6, sizeof(cl_mem), &image);
+        check_cl(status, "set arg 5");
+
+        // run kernel
+        size_t global_work_size[] = {width, height};
+        size_t local_work_size[] = {8, 8};
+        // XXX: is event necessary?
+        cl_event event;
+        status = clEnqueueNDRangeKernel(queue, kernel, 2, NULL, global_work_size, local_work_size, 0, NULL, &event);
+        check_cl(status, "enqueue kernel");
+
+        size_t offset[] = {0, 0, 0};
+        size_t dims[] = {width, height, 1};
+        
+        status = clEnqueueReadImage(queue, image, 1, offset, dims, 0, 0, data4, 1, &event, NULL);
+        check_cl(status, "read");
+
+        status = clReleaseEvent(event);
+        check_cl(status, "release event");
+
+        status = clFinish(queue);
+        check_cl(status, "finish");
+    }
+#endif
+
 	for (int y = 0; y < height; y++) for (int x = 0; x < width; x++)
 	{
-		Color3f color = {0.,0.,0.};
+        Color4f color = {0.,0.,0.};
+        if (render_method == TracerCL) {
+            color.r = data4[ARR_IDX4(x, y, 0)];
+            color.g = data4[ARR_IDX4(x, y, 1)];
+            color.b = data4[ARR_IDX4(x, y, 2)];
+        } else {
 		Point3f temp_target =
 			vectMulScalar(vectMulScalar(bottom_left_vec, dup, (float)y), dright, (float)x);
 		if (render_method == Stacking)
-			ray_cast_oct_tree_stacking(camera, temp_target, mainOctTree, &color);
+                ray_cast_oct_tree_stacking(camera, temp_target, mainOctTree, 1.0, (Point3f) { 0, 0, 0 }, &color);
 		else
 			ray_cast_oct_tree_stackless(camera, temp_target, mainOctTree, &color);
-		data[ARR_IDX(x,y,0)] = color.r;
-		data[ARR_IDX(x,y,1)] = color.g;
-		data[ARR_IDX(x,y,2)] = color.b;
+        }
+        data[ARR_IDX(x, y, 0)] = color.r;
+        data[ARR_IDX(x, y, 1)] = color.g;
+        data[ARR_IDX(x, y, 2)] = color.b;
 	}
-
 }
