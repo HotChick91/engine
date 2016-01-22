@@ -3,7 +3,14 @@
 #include <math.h>
 #include <stdlib.h>
 #include <time.h>
+
+#ifndef TRACER_CL
+#define TRACER_CL 1
+#endif
+
+#if TRACER_CL
 #include <CL/cl.h>
+#endif
 
 #define ARR_IDX(x, y, col) ((((y) * width + (x)) * 3) + (col))
 #define ARR_IDX4(x, y, col) ((((y) * width + (x)) * 4) + (col))
@@ -193,26 +200,28 @@ void check_nn(void *ptr, char *msg) {
         die(msg, "null", 0);
 }
 
-void check_cl(cl_int status, char *msg) {
-    if (status != CL_SUCCESS)
-        die(msg, "opencl error", status);
-}
-
 void check_ferror(FILE *stream, char *msg) {
     int errord = ferror(stream);
     if (errord)
         die(msg, "ferror", errord);
 }
 
+#if TRACER_CL
+void check_cl(cl_int status, char *msg) {
+    if (status != CL_SUCCESS)
+        die(msg, "opencl error", status);
+}
+
 cl_command_queue queue;
 cl_kernel kernel;
 cl_mem mainOctCL;
 cl_mem image;
+#endif
+
+GLFWwindow* window;
 const int height = 1024;
 const int width = 1024;
 float *data4;
-
-GLFWwindow* window;
 
 int main(void)
 {
@@ -248,6 +257,7 @@ int main(void)
 
     //****************************
 
+#if TRACER_CL
     // prepare your anus
     // i mean gpu
     cl_int status;
@@ -337,7 +347,7 @@ int main(void)
     // create the compute kernel
     kernel = clCreateKernel(program, "ray_cl", &status);
     check_cl(status, "create kernel");
-
+#endif
     /* Loop until the user closes the window */
     while (!glfwWindowShouldClose(window))
     {
@@ -377,13 +387,14 @@ int main(void)
         glfwPollEvents();
     }
 
+#if TRACER_CL
     clReleaseMemObject(mainOctCL);
     clReleaseMemObject(image);
     clReleaseProgram(program);
     clReleaseKernel(kernel);
     clReleaseCommandQueue(queue);
     clReleaseContext(context);
-
+#endif
     glfwDestroyWindow(window);
 
     glfwTerminate();
@@ -433,9 +444,11 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
                 if (render_method == Stacking) {
                     render_method = Stackless;
                     printf("Stackless");
+#if TRACER_CL
                 } else if (render_method == Stackless) {
                     render_method = TracerCL;
                     printf("TracerCL");
+#endif
                 } else {
                     render_method = Stacking;
                     printf("Stacking");
@@ -721,6 +734,7 @@ void captureOctTree(Point3f camera, Point3f target, Point3f up, int width, int h
     Point3f dright = vectDiv(right, (float)width);
     Point3f dup = vectDiv(up, (float)height);
 
+#if TRACER_CL
     if (render_method == TracerCL) {
         // set the args values
         cl_int status;
@@ -757,6 +771,7 @@ void captureOctTree(Point3f camera, Point3f target, Point3f up, int width, int h
         status = clFinish(queue);
         check_cl(status, "finish");
     }
+#endif
 
     for (int y = 0; y < height; y++) for (int x = 0; x < width; x++)
     {
