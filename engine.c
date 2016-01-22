@@ -78,7 +78,7 @@ int cmpDistData(const void * a, const void * b)
 const float eps = 0.000001f;
 int epsEq(const float a, const float b)
 {
-    return fabs(a - b) < eps; // Not necessarily great numerically
+    return fabsf(a - b) < eps; // Not necessarily great numerically
 }
 int epsGteF(const float a, const float b)
 {
@@ -244,7 +244,7 @@ int main(void)
                               , sinf(vertical_angle)};
     float * piksele = malloc(height*width*3*sizeof(*piksele));
     
-    printf("sizeof(OctTreeNode)=%d\n", sizeof(OctTreeNode));
+    printf("sizeof(OctTreeNode)=%zd\n", sizeof(OctTreeNode));
 
     //****************************
 
@@ -487,9 +487,8 @@ OctTreeNode *maybeSibling(OctTreeNode *tree, int dx, int dy, int dz)
     return mainOctTree + mainOctTree[tree->parent].nodes[nx][ny][nz];
 }
 
-int ray_cast_oct_tree_stacking(Point3f origin, Point3f direction, OctTreeNode * tree, Color4f * color)
+int ray_cast_oct_tree_stacking(Point3f origin, Point3f direction, OctTreeNode * tree, float radius, Point3f center,  Color4f * color)
 {
-#if 0
     // TODO check if origin inside tree?
     // TODO ładnie się wywalić jak tree == Null
 
@@ -501,7 +500,9 @@ int ray_cast_oct_tree_stacking(Point3f origin, Point3f direction, OctTreeNode * 
     }
     // if (tree->type == Partial)
 
-    Point3f local = vectMulScalar(origin, tree->center, -1);
+    Point3f local = vectMulScalar(origin, center, -1);
+    float* local_a = (float*)(&local);
+    float* direction_a = (float*)(&direction);
 
     // Check if we intersect 0-planes, and if so at what distance from origin
     struct dist_data intersection_dist[5];
@@ -509,81 +510,58 @@ int ray_cast_oct_tree_stacking(Point3f origin, Point3f direction, OctTreeNode * 
     intersection_dist[0].plane = -1;
     int intersection_size = 1;
 
-    if (local.x * direction.x < 0) {
-        intersection_dist[intersection_size].dist = -1 * local.x / direction.x;
-        intersection_dist[intersection_size].plane = 0;
-        intersection_size++;
-    }
-    if (local.y * direction.y < 0) {
-        intersection_dist[intersection_size].dist = -1 * local.y / direction.y;
-        intersection_dist[intersection_size].plane = 1;
-        intersection_size++;
-    }
-    if (local.z * direction.z < 0) {
-        intersection_dist[intersection_size].dist = -1 * local.z / direction.z;
-        intersection_dist[intersection_size].plane = 2;
-        intersection_size++;
+    for (int axis = 0; axis < 3; axis++) {
+        if (local_a[axis] * direction_a[axis] < 0) {
+            intersection_dist[intersection_size].dist = -1 * local_a[axis] / direction_a[axis];
+            intersection_dist[intersection_size].plane = axis;
+            intersection_size++;
+        }
     }
 
     // sortowanie
     qsort(intersection_dist, intersection_size, sizeof(*intersection_dist), cmpDistData);
     // aditional point for last intersection check
-    intersection_dist[intersection_size].dist = intersection_dist[intersection_size-1].dist + 1.;
+    intersection_dist[intersection_size].dist = intersection_dist[intersection_size-1].dist + 1.f;
     intersection_dist[intersection_size].plane = -1;
     intersection_size++;
 
     // we need to check each specific segment if it intersects with cube
-    for (int segment_num = 0; segment_num < intersection_size - 1; segment_num++)
-    {
+    for (int segment_num = 0; segment_num < intersection_size - 1; segment_num++) {
         float mid_point_distance = (intersection_dist[segment_num].dist + intersection_dist[segment_num+1].dist)/2;
         Point3f half_point = vectMulScalar(local, direction, mid_point_distance);
 
-        Point3f oct = {half_point.x < 0. ? -1 : 1, half_point.y < 0. ? -1 : 1, half_point.z < 0. ? -1 : 1};
-        Point3f pl = {tree->radius * oct.x, tree->radius * oct.y, tree->radius * oct.z};
+        Point3f oct = {half_point.x < 0.f ? -1.f : 1.f, half_point.y < 0.f ? -1.f : 1.f, half_point.z < 0.f ? -1.f : 1.f};
+        Point3f pl = {radius * oct.x, radius * oct.y, radius * oct.z};
 
         int found = 0;
 
-        if (!found && intersection_dist[segment_num].plane >= 0)
-        {
+        if (!found && intersection_dist[segment_num].plane >= 0) {
             Point3f begin = vectMulScalar(local, direction, intersection_dist[segment_num].dist);
-            if (intersection_dist[segment_num].plane == 0)
-                found = fabs(begin.y) <= tree->radius && fabs(begin.z) <= tree->radius;
-            else if (intersection_dist[segment_num].plane == 1)
-                found = fabs(begin.x) <= tree->radius && fabs(begin.z) <= tree->radius;
-            else if (intersection_dist[segment_num].plane == 2)
-                found = fabs(begin.x) <= tree->radius && fabs(begin.y) <= tree->radius;
+            float* begin_a = (float*)(&begin);
+            int base_axis = intersection_dist[segment_num].plane;
+            found = fabsf(begin_a[ (base_axis+1)%3]) <= radius
+                 && fabsf(begin_a[ (base_axis+2)%3]) <= radius;
         }
-        //each end is also a begin
-        /*if (!found && intersection_dist[segment_num+1].plane >= 0)
-        {
-            Point3f end = vectMulScalar(local, direction, intersection_dist[segment_num+1].dist);
-            if (intersection_dist[segment_num+1].plane == 0)
-                found = fabs(end.y) <= tree->radius && fabs(end.z) <= tree->radius;
-            else if (intersection_dist[segment_num+1].plane == 1)
-                found = fabs(end.x) <= tree->radius && fabs(end.z) <= tree->radius;
-            else if (intersection_dist[segment_num+1].plane == 2)
-                found = fabs(end.x) <= tree->radius && fabs(end.y) <= tree->radius;
-        }*/
+        // we don't check end because each end is also a begin
 
-        if(!found){
-            found = vectPlaneIntersection(local, direction, 0, pl);
-        }
-        if(!found){
-            found = vectPlaneIntersection(local, direction, 1, pl);
-        }
-        if(!found){
-            found = vectPlaneIntersection(local, direction, 2, pl);
+        for (int axis = 0; axis < 3; axis++) {
+            if(!found){
+                found = vectPlaneIntersection(local, direction, axis, pl);
+            }
         }
 
-        if (found) // TODO fix after mergin stackless
-        {
-            OctTreeNode * t;
-            t = tree->nodes[half_point.x > 0][half_point.y > 0][half_point.z > 0];
-            int ret = ray_cast_oct_tree_stacking(origin, direction, t, color);
+        if (found) {
+            OctTreeNode * t = mainOctTree + tree->nodes[half_point.x > 0][half_point.y > 0][half_point.z > 0];
+            // -----
+            Point3f new_pos;
+            new_pos.x = center.x + (radius/2) * oct.x;
+            new_pos.y = center.y + (radius/2) * oct.y;
+            new_pos.z = center.z + (radius/2) * oct.z;
+            // ----
+            int ret = ray_cast_oct_tree_stacking(origin, direction, t, radius/2, new_pos,  color);
             if (ret) return 1;
         }
     }
-#endif
     return 0;
 }
 
@@ -652,16 +630,17 @@ next_ray:
 
             goto next_ray;
         }
-		center = (Point3f) {
-			center.x - (2 * tree->x - 1) * radius,
-				center.y - (2 * tree->y - 1) * radius,
-				center.z - (2 * tree->z - 1) * radius
-		};
-		radius *= 2.f;
+        center = (Point3f) {
+            center.x - (2 * tree->x - 1) * radius,
+                center.y - (2 * tree->y - 1) * radius,
+                center.z - (2 * tree->z - 1) * radius
+        };
+        radius *= 2.f;
         tree = mainOctTree + tree->parent;
     }
     color->r = color->g = color->b = color->a = 0;
 }
+
 void initOctTree()
 {
     mainOctTree = malloc(9*sizeof(*mainOctTree));
@@ -790,7 +769,7 @@ void captureOctTree(Point3f camera, Point3f target, Point3f up, int width, int h
             Point3f temp_target =
                 vectMulScalar(vectMulScalar(bottom_left_vec, dup, (float)y), dright, (float)x);
             if (render_method == Stacking)
-                ray_cast_oct_tree_stacking(camera, temp_target, mainOctTree, &color);
+                ray_cast_oct_tree_stacking(camera, temp_target, mainOctTree, 1.0, (Point3f) { 0, 0, 0 }, &color);
             else
                 ray_cast_oct_tree_stackless(camera, temp_target, mainOctTree, &color);
         }

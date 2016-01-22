@@ -37,12 +37,11 @@ kernel void ray_cl(float3 origin, float3 bottom_left_vec, float3 dup, float3 dri
             dy = relative.y > 0;
             dz = relative.z > 0;
             tree = trees + tree->nodes[dx][dy][dz];
-            relative = origin - center;
-            
             radius /= 2.f;
             center = (float3)( center.x + (2 * dx - 1) * radius,
                                center.y + (2 * dy - 1) * radius,
                                center.z + (2 * dz - 1) * radius );
+            relative = origin - center;
         }
 
         if (tree->type == Solid) {
