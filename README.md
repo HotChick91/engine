@@ -2,7 +2,9 @@
 
 Requires GLFW 3.
 
-OpenCL is recommended. To compile without OpenCL, pass `-DTRACER_CL=0` (or similar, depending on compiler).
+OpenCL is recommended (1.2 and 2.0 are supported).
+When running with OpenCL support enabled, make sure that `ray.cl` is in the working directory.
+To compile without OpenCL, pass `-DTRACER_CL=0` (or similar, depending on compiler).
 
 To get this working in Visual Studio, add:
 

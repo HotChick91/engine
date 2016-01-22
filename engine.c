@@ -279,13 +279,10 @@ int main(void)
     check_cl(status, "get platform name");
     status = clGetPlatformInfo(platform_id, CL_PLATFORM_VENDOR, 128, info[3], NULL);
     check_cl(status, "get platform vendor");
-    status = clGetPlatformInfo(platform_id, CL_PLATFORM_EXTENSIONS, 128, info[4], NULL);
-    check_cl(status, "get platform extensions");
     printf("profile: %s\n", info[0]);
     printf("version: %s\n", info[1]);
     printf("name: %s\n", info[2]);
     printf("vendor: %s\n", info[3]);
-    printf("extensions: %s\n", info[4]);
 
     cl_context context = clCreateContextFromType(props, CL_DEVICE_TYPE_GPU, NULL, NULL, &status);
     check_cl(status, "create context");
@@ -309,7 +306,11 @@ int main(void)
     desc.image_slice_pitch = 0;
     desc.num_mip_levels = 0;
     desc.num_samples = 0;
+#if CL_VERSION_2_0
     desc.mem_object = NULL;
+#else
+    desc.buffer = NULL;
+#endif
     image = clCreateImage(context, CL_MEM_WRITE_ONLY, &fmt, &desc, NULL, &status);
     check_cl(status, "create image");
 
@@ -318,12 +319,16 @@ int main(void)
 
     // create the compute program
     FILE *kernel_handle;
-    fopen_s(&kernel_handle, "../ray.cl", "rb");
+    fopen_s(&kernel_handle, "ray.cl", "rb");
     check_nn(kernel_handle, "fopen ray.cl");
     size_t n_bytes = fread(kernel_src, 1, 10239, kernel_handle);
     kernel_src[n_bytes] = '\0';
     check_ferror(kernel_handle, "fread");
+#if CL_VERSION_2_0
     cl_program program = clCreateProgramWithSource(context, 1, &kernel_src, NULL, &status);
+#else
+    cl_program program = clCreateProgram(context, 1, &kernel_src, 0, &status);
+#endif
     check_cl(status, "create program");
 
     // build the compute program executable
