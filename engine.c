@@ -294,7 +294,7 @@ int main(void)
 #if CL_VERSION_2_0
     queue = clCreateCommandQueueWithProperties(context, device_id, NULL, &status);
 #else
-    queue = clCreateCommandQueueWithProperties(context, device_id, 0, &status);
+    queue = clCreateCommandQueue(context, device_id, 0, &status);
 #endif
     check_cl(status, "create command queue");
 
