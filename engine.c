@@ -413,12 +413,15 @@ next_ray:
 	local = vectMulScalar(origin, center, -1);
 
 	if (tree->type == Partial) {
-		tree = tree->nodes[local.x > 0][local.y > 0][local.z > 0];
+		dx = local.x > 0;
+		dy = local.y > 0;
+		dz = local.z > 0;
+		tree = tree->nodes[dx][dy][dz];
 		// ----
-		center = (Point3f){center.x - radius / 2 + local.x * radius,
-			               center.y - radius / 2 + local.y * radius,
-						   center.z - radius / 2 + local.z * radius };
-		radius = radius / 2;
+		radius /= 2.f;
+		center = (Point3f){ center.x + (2 * dx - 1) * radius,
+			                center.y + (2 * dy - 1) * radius,
+				            center.z + (2 * dz - 1) * radius };
 		// ----
 		goto next_ray;
 	}
@@ -452,14 +455,18 @@ next_ray:
 			origin = vectMulScalar(new_local, center, 1);
 			tree = sibling;
 			// ----
-			radius = radius;
-			center = (Point3f){center.x + dx * radius, center.y + dy * radius, center.z + dz * radius };
+			// radius stays the same
+			center = (Point3f){ center.x + (2 * dx) * radius,
+				                center.y + (2 * dy) * radius,
+				                center.z + (2 * dz) * radius };
 			// ----
 			goto next_ray;
 		}
 		// ----
-		radius = 2 * radius;
-		center = (Point3f){center.x - tree->x * radius/2, center.y - tree->y * radius/2, center.z + tree->z * radius/2 };
+		center = (Point3f){ center.x - (2 * tree->x - 1) * radius,
+						    center.y - (2 * tree->y - 1) * radius,
+						    center.z - (2 * tree->z - 1) * radius };
+		radius *= 2.f;
 		// ----
 		tree = tree->parent;
 	}
