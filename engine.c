@@ -1,167 +1,31 @@
-#include <GLFW/glfw3.h>
-#include <stdio.h>
 #include <math.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+#include <GLFW/glfw3.h>
+
+#include "cl.h"
+#include "error.h"
+#include "geom.h"
+#include "globals.h"
+#include "render.h"
+#include "types.h"
+
+// TODO zrobić na to odpowiedni plik
 #include "HsFFI.h"
 
 #ifdef __GLASGOW_HASKELL__
 #include "FileLoader_stub.h"
 #endif
 
-#define ARR_IDX(x, y, col) (((y) * width + (x)) * 3) + (col)
+void load_file(const char* name);
 
-extern void load_file(const char* a);
-
-typedef struct Point3f {
-	float x;
-	float y;
-	float z;
-} Point3f;
-
-Point3f vectMul(Point3f a, Point3f b)
-{
-	return (Point3f){a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x};
-}
-
-Point3f vectMulScalar(Point3f a, Point3f b, float c)
-{
-	return (Point3f){a.x + b.x * c, a.y + b.y * c, a.z + b.z * c};
-}
-
-Point3f vectSum(Point3f a, Point3f b, Point3f c)
-{
-	return (Point3f){a.x + b.x + c.x, a.y + b.y + c.y, a.z + b.z + c.z};
-}
-
-Point3f vectDiv(Point3f a, float c)
-{
-	return (Point3f){a.x / c, a.y / c, a.z / c};
-}
-
-Point3f vectScale(Point3f a, Point3f b)
-{
-	return (Point3f){a.x * b.x, a.y * b.y, a.z * b.z};
-}
-
-Point3f vectNormalize(Point3f a)
-{
-	float len = sqrtf(a.x * a.x + a.y * a.y + a.z * a.z);
-	return vectDiv(a, len);
-}
-
-struct dist_data{
-	float dist;
-	int plane;
-};
-int cmpDistData(const void * a, const void * b)
-{
-	return (*(struct dist_data*)a).dist < (*(struct dist_data*)b).dist ? -1 : 1;
-}
-
-const float eps = 0.000001f;
-int epsEq(const float a, const float b)
-{
-	return fabs(a - b) < eps; // Not necessarily great numerically
-}
-int epsGteF(const float a, const float b)
-{
-	return a > b || epsEq(a,b) ; // Not necessarily great numerically
-}
-int epsLteF(const float a, const float b)
-{
-	return b > a || epsEq(a,b); // Not necessarily great numerically
-}
-int epsGteP(const Point3f a, const Point3f b)
-{
-	return epsGteF(a.x, b.x) && epsGteF(a.y, b.y) && epsGteF(a.z, b.z);
-}
-int epsLteP(const Point3f a, const Point3f b)
-{
-	return epsLteF(a.x, b.x) && epsLteF(a.y, b.y) && epsLteF(a.z, b.z);
-}
-
-// check intersection of vector [origin; direction] with plane limited
-// by value and versor plane (1 on planeth coordinate, 0 on the rest)
-int vectPlaneIntersection(Point3f origin, Point3f direction, int plane, Point3f value)
-{
-	float dist;
-	float* origin_a = (float*)(&origin);
-	float* value_a = (float*)(&value);
-	float* direction_a = (float*)(&direction);
-
-	if (plane < 0 || plane >= 3) return 0;
-
-	if (direction_a[plane] == 0
-	 || (origin_a[plane] < value_a[plane] && direction_a[plane] < 0)
-	 || (origin_a[plane] > value_a[plane] && direction_a[plane] > 0))
-		return 0;
-	dist = (value_a[plane] - origin_a[plane]) / direction_a[plane];
-
-	Point3f intersect = vectMulScalar(origin, direction, dist);
-	float* intersect_a = (float*)(&intersect);
-
-	float i_1, v_1, i_2, v_2;
-	i_1 = intersect_a[(plane + 1) % 3];
-	v_1 = value_a[(plane + 1) % 3];
-	i_2 = intersect_a[(plane + 2) % 3];
-	v_2 = value_a[(plane + 2) % 3];
-
-	if (v_1 < 0) {
-		v_1 *= -1.0f;
-		i_1 *= -1.0f;
-	}
-	if (v_2 < 0) {
-		v_2 *= -1.0f;
-		i_2 *= -1.0f;
-	}
-	return epsGteF(i_1, 0) && epsLteF(i_1, v_1) && epsGteF(i_2, 0) && epsLteF(i_2, v_1);
-}
-
-typedef struct Color3f {
-	float r;
-	float g;
-	float b;
-} Color3f;
-
-enum OctTreeNodeType {Empty, Solid, Partial}; // TODO owrapować to ładnie, żeby nie robić syfu w top lvl
-
-typedef struct OctTreeNode OctTreeNode;
-
-struct OctTreeNode {
-	int x, y, z;
-	int parent;
-	Point3f center; // center point of cube
-	float radius; // cube radius
-	enum OctTreeNodeType type;
-	union {
-		Color3f color;
-		int nodes[2][2][2];
-	};
-};
-
-Point3f camera_pos = {0.89f,-0.98f,-0.25f};
-Point3f camera_target = {0.0f,1.0f,0.0f};
-Point3f up = {0.f, 0.f, 1.f};
-Point3f light = {1.0f, -2.0f, 0.0f};
-float horizontal_angle = 2.0;
-float vertical_angle = 0.0;
-
-enum RenderMethod {Stacking, Stackless} render_method = Stackless;
-
-OctTreeNode * mainOctTree;
-int octTreeLength;
-
-static void error_callback(int error, const char* description);
 static void key_callback(GLFWwindow* windows, int key, int scancode, int action, int mods);
-void initOctTree();
-void captureOctTree(Point3f camera, Point3f target, Point3f up, int width, int height, float* data);
+static void initOctTree(void);
 
 int main(int argc, char* argv[])
 {
 	glfwSetErrorCallback(error_callback);
-
-	GLFWwindow* window;
 
 	/* Initialize the library */
 	if (!glfwInit()){
@@ -170,7 +34,7 @@ int main(int argc, char* argv[])
 	}
 
 	/* Create a windowed mode window and its OpenGL context */
-	window = glfwCreateWindow(500, 500, "Hello World", NULL, NULL);
+    window = glfwCreateWindow(width, height, "Hello World", NULL, NULL);
 	if (!window) {
 		glfwTerminate();
 		fprintf(stderr, "Error creating window.\n");
@@ -189,14 +53,122 @@ int main(int argc, char* argv[])
 	camera_target = (Point3f) { cosf(horizontal_angle) * cosf(vertical_angle)
 							  , sinf(horizontal_angle) * cosf(vertical_angle)
 							  , sinf(vertical_angle)};
-	const int height = 500;
-	const int width = 500;
 	float * piksele = malloc(height*width*3*sizeof(*piksele));
+
+    printf("sizeof(OctTreeNode)=%zd\n", sizeof(OctTreeNode));
 
 	//****************************
 
-	double last_xpos, last_ypos;
+#if TRACER_CL
+    // prepare your anus
+    // i mean gpu
+    cl_int status;
+    cl_platform_id platform_id;
+    cl_int num_platforms;
+    char *kernel_src = malloc(10240);
+    check_nn(kernel_src, "kernel_src");
+    status = clGetPlatformIDs(1, &platform_id, &num_platforms);
+    check_cl(status, "get platform ids");
 
+    printf("#platforms: %d\n", num_platforms);
+    cl_context_properties *props = getContextProperties(platform_id);
+
+    char info[4][128];
+    status = clGetPlatformInfo(platform_id, CL_PLATFORM_PROFILE, 128, info[0], NULL);
+    check_cl(status, "get platform profile");
+    status = clGetPlatformInfo(platform_id, CL_PLATFORM_VERSION, 128, info[1], NULL);
+    check_cl(status, "get platform version");
+    status = clGetPlatformInfo(platform_id, CL_PLATFORM_NAME, 128, info[2], NULL);
+    check_cl(status, "get platform name");
+    status = clGetPlatformInfo(platform_id, CL_PLATFORM_VENDOR, 128, info[3], NULL);
+    check_cl(status, "get platform vendor");
+
+    printf("profile: %s\n", info[0]);
+    printf("version: %s\n", info[1]);
+    printf("name: %s\n", info[2]);
+    printf("vendor: %s\n", info[3]);
+
+    cl_context context = clCreateContextFromType(props, CL_DEVICE_TYPE_GPU, NULL, NULL, &status);
+    check_cl(status, "create context");
+
+    // create a command queue
+    cl_device_id device_id;
+    status = clGetDeviceIDs(platform_id, CL_DEVICE_TYPE_GPU, 1, &device_id, NULL);
+    check_cl(status, "get device ids");
+#ifdef CL_VERSION_2_0
+    queue = clCreateCommandQueueWithProperties(context, device_id, NULL, &status);
+#else
+    queue = clCreateCommandQueue(context, device_id, 0, &status);
+#endif
+    check_cl(status, "create command queue");
+
+    // allocate memory objects
+    mainOctCL = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, 9*sizeof(OctTreeNode), mainOctTree, &status);
+    check_cl(status, "create buffer");
+
+    cl_image_format fmt = { CL_RGBA, CL_FLOAT };
+    cl_image_desc desc;
+    desc.image_type = CL_MEM_OBJECT_IMAGE2D;
+    desc.image_width = width;
+    desc.image_height = height;
+    desc.image_row_pitch = 0;
+    desc.image_slice_pitch = 0;
+    desc.num_mip_levels = 0;
+    desc.num_samples = 0;
+#ifdef CL_VERSION_2_0
+    desc.mem_object = NULL;
+#else
+    desc.buffer = NULL;
+#endif
+
+    glGenTextures(1, &texture);
+    glBindTexture(GL_TEXTURE_2D, texture);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_FLOAT, NULL);
+    glFinish();
+
+    image = clCreateFromGLTexture(context, CL_MEM_WRITE_ONLY, GL_TEXTURE_2D, 0, texture, &status);
+    check_cl(status, "create image");
+
+    // create the compute program
+    FILE *kernel_handle;
+    fopen_s(&kernel_handle, "ray.cl", "rb");
+    check_nn(kernel_handle, "fopen ray.cl");
+
+    size_t n_bytes = fread(kernel_src, 1, 10239, kernel_handle);
+    kernel_src[n_bytes] = '\0';
+    check_ferror(kernel_handle, "fread");
+
+    cl_program program = clCreateProgramWithSource(context, 1, &kernel_src, NULL, &status);
+    check_cl(status, "create program");
+
+    // build the compute program executable
+    status = clBuildProgram(program, 0, NULL, NULL, NULL, NULL);
+    if (status != CL_BUILD_PROGRAM_FAILURE && status != CL_SUCCESS) {
+        check_cl(status, "build program");
+    } else {
+        size_t log_size;
+        status = clGetProgramBuildInfo(program, device_id, CL_PROGRAM_BUILD_LOG, 0, NULL, &log_size);
+        check_cl(status, "get program build log size");
+
+        char *log = malloc(log_size);
+        check_nn(log, "log");
+
+        status = clGetProgramBuildInfo(program, device_id, CL_PROGRAM_BUILD_LOG, log_size, log, NULL);
+        check_cl(status, "get program build log");
+
+        fprintf(stderr, "build kernel log:\n%s\n", log);
+    }
+
+    // create the compute kernel
+    kernel = clCreateKernel(program, "ray_cl", &status);
+    check_cl(status, "create kernel");
+
+#endif
+    double last_xpos = 0, last_ypos = 0;
 	/* Loop until the user closes the window */
 	while (!glfwWindowShouldClose(window))
 	{
@@ -212,8 +184,8 @@ int main(int argc, char* argv[])
 		last_ypos += ypos;
 		if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_1) == GLFW_PRESS) {
 			const double alpha = 0.001;
-			horizontal_angle += xpos * alpha;
-			vertical_angle += ypos * alpha;
+			horizontal_angle += (float)(xpos * alpha);
+			vertical_angle += (float)(ypos * alpha);
 			camera_target = (Point3f) { cosf(horizontal_angle) * cosf(vertical_angle)
 									  , sinf(horizontal_angle) * cosf(vertical_angle)
 									  , sinf(vertical_angle)};
@@ -227,22 +199,6 @@ int main(int argc, char* argv[])
 		snprintf(title, 16, "%d ms", (int)((end - start) / (CLOCKS_PER_SEC / 1000)));
 		glfwSetWindowTitle(window, title);
 
-		//Rysowanie ramki na około viewportu
-		for (int i = 0; i < width; i++)
-		{
-			piksele[ARR_IDX(i, 0, 1)] = 1.;
-			piksele[ARR_IDX(i, 0, 2)] = 1.;
-			piksele[ARR_IDX(i, height - 1, 2)] = 1.;
-		}
-		for (int i = 0; i < height; i++)
-		{
-			piksele[ARR_IDX(0, i, 1)] = 1.;
-			piksele[ARR_IDX(0, i, 2)] = 1.;
-			piksele[ARR_IDX(width-1, i, 2)] = 1.;
-		}
-		// ostateczne rysowanie piksli powinno używać jakiejś innej techniki
-		glDrawPixels(width, height, GL_RGB, GL_FLOAT, piksele);
-
 		/* Swap front and back buffers */
 		glfwSwapBuffers(window);
 
@@ -250,13 +206,21 @@ int main(int argc, char* argv[])
 		glfwPollEvents();
 	}
 
+#if TRACER_CL
+    clReleaseMemObject(mainOctCL);
+    clReleaseMemObject(image);
+    clReleaseProgram(program);
+    clReleaseKernel(kernel);
+    clReleaseCommandQueue(queue);
+    clReleaseContext(context);
+#endif
 	glfwDestroyWindow(window);
 
 	glfwTerminate();
 	return 0;
 }
 
-void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods)
+static void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods)
 {
 	if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
 		glfwSetWindowShouldClose(window, GL_TRUE);
@@ -302,8 +266,12 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
 				if (render_method == Stacking) {
 					render_method = Stackless;
 					printf("Stackless");
-				}
-				else {
+#if TRACER_CL
+                } else if (render_method == Stackless) {
+                    render_method = TracerCL;
+                    printf("TracerCL");
+#endif
+                } else {
 					render_method = Stacking;
 					printf("Stacking");
 				}
@@ -320,187 +288,6 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
 	printf("Camera target is: (%f, %f %f)\n", camera_target.x, camera_target.y, camera_target.z);
 }
 
-void error_callback(int error, const char* description)
-{
-	fprintf(stderr, "(%d) %s\n", error, description);
-}
-
-float MAX(float a, float b) {
-	return a > b ? a : b;
-}
-
-void clamp(Point3f *p, float radius) {
-	if (p->x < -radius)
-		p->x = -radius;
-	else if (p->x > radius)
-		p->x = radius;
-	if (p->y < -radius)
-		p->y = -radius;
-	else if (p->y > radius)
-		p->y = radius;
-	if (p->z < -radius)
-		p->z = -radius;
-	else if (p->z > radius)
-		p->z = radius;
-}
-
-OctTreeNode *maybeSibling(OctTreeNode *tree, int dx, int dy, int dz)
-{
-	int nx = tree->x + dx;
-	int ny = tree->y + dy;
-	int nz = tree->z + dz;
-	if ((nx | ny | nz) & (~1))
-		return NULL;
-	return &mainOctTree[ mainOctTree[tree->parent].nodes[nx][ny][nz]];
-}
-
-void calculate_light(Point3f p, Color3f * color)
-{
-	float l_dist2 = (light.x - p.x) * (light.x - p.x )
-				  + (light.y - p.y) * (light.y - p.y )
-				  + (light.z - p.z) * (light.z - p.z );
-	float intensity = 2.0 / (2.0 + l_dist2);
-	color->r *= intensity;
-	color->g *= intensity;
-	color->b *= intensity;
-}
-
-int ray_cast_oct_tree_stacking(Point3f origin, Point3f direction, OctTreeNode * tree, Color3f * color)
-{
-	// TODO check if origin inside tree?
-	// TODO ładnie się wywalić jak tree == Null
-
-	if (tree->type == Empty)
-		return 0;
-	if (tree->type == Solid) {
-		*color = tree->color;
-		return 2;
-	}
-	// if (tree->type == Partial)
-
-	Point3f local = vectMulScalar(origin, tree->center, -1);
-	float* local_a = (float*)(&local);
-	float* direction_a = (float*)(&direction);
-
-	// Check if we intersect 0-planes, and if so at what distance from origin
-	struct dist_data intersection_dist[5];
-	intersection_dist[0].dist = 0;
-	intersection_dist[0].plane = -1;
-	int intersection_size = 1;
-
-	for (int axis = 0; axis < 3; axis++) {
-		if (local_a[axis] * direction_a[axis] < 0) {
-			intersection_dist[intersection_size].dist = -1 * local_a[axis] / direction_a[axis];
-			intersection_dist[intersection_size].plane = axis;
-			intersection_size++;
-		}
-	}
-
-	// sortowanie
-	qsort(intersection_dist, intersection_size, sizeof(*intersection_dist), cmpDistData);
-	// aditional point for last intersection check
-	intersection_dist[intersection_size].dist = intersection_dist[intersection_size-1].dist + 1.;
-	intersection_dist[intersection_size].plane = -1;
-	intersection_size++;
-
-	// we need to check each specific segment if it intersects with cube
-	for (int segment_num = 0; segment_num < intersection_size - 1; segment_num++) {
-		float mid_point_distance = (intersection_dist[segment_num].dist + intersection_dist[segment_num+1].dist)/2;
-		Point3f half_point = vectMulScalar(local, direction, mid_point_distance);
-
-		Point3f final_collision;
-
-		Point3f oct = {half_point.x < 0. ? -1 : 1, half_point.y < 0. ? -1 : 1, half_point.z < 0. ? -1 : 1};
-		float* oct_a = (float*)(&oct);
-		Point3f pl = {tree->radius * oct.x, tree->radius * oct.y, tree->radius * oct.z};
-
-		int found = 0;
-
-		if (!found && intersection_dist[segment_num].plane >= 0) {
-			Point3f begin = vectMulScalar(local, direction, intersection_dist[segment_num].dist);
-			float* begin_a = (float*)(&begin);
-			int base_axis = intersection_dist[segment_num].plane;
-			found = fabs(begin_a[ (base_axis+1)%3]) <= tree->radius
-				 && fabs(begin_a[ (base_axis+2)%3]) <= tree->radius;
-			if (found) {
-				final_collision = begin;
-			}
-		}
-
-		for (int axis = 0; axis < 3; axis++) {
-			if(!found && direction_a[axis] * oct_a[axis] < 0 ){
-				found = vectPlaneIntersection(local, direction, axis, pl);
-				if(found) {
-					float dist = (tree->radius - local_a[axis]) / direction_a[axis];
-					final_collision = vectMulScalar(local, direction, dist);
-				}
-			}
-		}
-
-		if (found) {
-			OctTreeNode * t = &mainOctTree[tree->nodes[half_point.x > 0][half_point.y > 0][half_point.z > 0]];
-			int ret = ray_cast_oct_tree_stacking(origin, direction, t, color);
-			if (ret == 2)
-			{
-				calculate_light(final_collision, color);
-			}
-			if (ret) return 1;
-		}
-	}
-	return 0;
-}
-
-void ray_cast_oct_tree_stackless(Point3f origin, Point3f direction, OctTreeNode * tree, Color3f * color)
-{
-	Point3f local, new_local;
-	float xdist, ydist, zdist;
-	int dx, dy, dz;
-
-next_ray:
-
-	local = vectMulScalar(origin, tree->center, -1);
-
-	if (tree->type == Partial) {
-		tree = &mainOctTree[tree->nodes[local.x > 0][local.y > 0][local.z > 0]];
-		goto next_ray;
-	}
-
-	if (tree->type == Solid) {
-		*color = tree->color;
-		calculate_light(origin, color);
-		return;
-	}
-
-	// to prevent bad things that potentially could happen due to numerical errors
-	clamp(&local, tree->radius);
-
-	xdist = MAX((tree->radius - local.x) / direction.x, (-tree->radius - local.x) / direction.x);
-	ydist = MAX((tree->radius - local.y) / direction.y, (-tree->radius - local.y) / direction.y);
-	zdist = MAX((tree->radius - local.z) / direction.z, (-tree->radius - local.z) / direction.z);
-	dx = 0, dy = 0, dz = 0;
-	if (xdist < ydist && xdist < zdist) {
-		new_local = vectMulScalar(local, direction, xdist);
-		dx = direction.x > 0 ? 1 : -1;
-	} else if (ydist < zdist) {
-		new_local = vectMulScalar(local, direction, ydist);
-		dy = direction.y > 0 ? 1 : -1;
-	} else {
-		new_local = vectMulScalar(local, direction, zdist);
-		dz = direction.z > 0 ? 1 : -1;
-	}
-
-	while (tree->parent != -1) {
-		OctTreeNode *sibling = maybeSibling(tree, dx, dy, dz);
-		if (sibling != NULL) {
-			origin = vectMulScalar(new_local, tree->center, 1);
-			tree = sibling;
-			goto next_ray;
-		}
-		tree = &mainOctTree[tree->parent];
-	}
-
-	color->r = color->g = color->b = 0;
-}
 
 void push_oct_tree_partial(int c0, int c1, int c2, int c3, int c4, int c5, int c6, int c7)
 {
@@ -554,7 +341,7 @@ void push_oct_tree_solid(float r, float g, float b)
 {
 	printf("Pushing solid %f %f %f\n", r, g, b);
 	mainOctTree[octTreeLength].type = Solid;
-	mainOctTree[octTreeLength].color = (Color3f) {r,g,b};
+	mainOctTree[octTreeLength].color = (Color4f) {r,g,b,0};
 	octTreeLength++;
 }
 
@@ -566,41 +353,15 @@ void push_oct_tree_empty()
 }
 
 
-void initOctTree()
+static void initOctTree(void)
 {
-	mainOctTree = malloc(16 * sizeof(*mainOctTree));
+	mainOctTree = malloc(32 * sizeof(*mainOctTree));
 	octTreeLength = 0;
 
 	load_file("model.json");
 
-	mainOctTree[0].parent = -1;
+	/*mainOctTree[0].parent = -1;*/
+    mainOctTree->parent = -1;
 	printf("Done loading.\n");
-}
-
-void captureOctTree(Point3f camera, Point3f target, Point3f up, int width, int height, float* data)
-{
-	//normalize vectors
-	target = vectNormalize(target);
-	up = vectNormalize(up);
-
-	Point3f right = vectMul(target, up);
-	Point3f bottom_left_vec = vectSum(target, vectDiv(up, -2), vectDiv(right, -2));
-
-	Point3f dright = vectDiv(right, (float)width);
-	Point3f dup = vectDiv(up, (float)height);
-
-	for (int y = 0; y < height; y++) for (int x = 0; x < width; x++)
-	{
-		Color3f color = {0.,0.,0.};
-		Point3f temp_target =
-			vectMulScalar(vectMulScalar(bottom_left_vec, dup, (float)y), dright, (float)x);
-		if (render_method == Stacking)
-			ray_cast_oct_tree_stacking(camera, temp_target, mainOctTree, &color);
-		else
-			ray_cast_oct_tree_stackless(camera, temp_target, mainOctTree, &color);
-		data[ARR_IDX(x,y,0)] = color.r;
-		data[ARR_IDX(x,y,1)] = color.g;
-		data[ARR_IDX(x,y,2)] = color.b;
-	}
 
 }
