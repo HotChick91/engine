@@ -16,10 +16,10 @@ extern RenderMethod render_method;
 
 extern OctTreeNode * mainOctTree;
 
+extern GLuint texture;
 extern GLFWwindow* window;
 extern const int height;
 extern const int width;
-extern float *data4;
 
 #if TRACER_CL
 extern cl_command_queue queue;

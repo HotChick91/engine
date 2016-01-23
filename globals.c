@@ -13,10 +13,10 @@ RenderMethod render_method = Stacking;
 
 OctTreeNode * mainOctTree;
 
+GLuint texture;
 GLFWwindow* window;
 const int height = 1024;
 const int width = 1024;
-float *data4;
 
 #if TRACER_CL
 cl_command_queue queue;

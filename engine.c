@@ -58,8 +58,9 @@ int main(void)
     check_nn(kernel_src, "kernel_src");
     status = clGetPlatformIDs(1, &platform_id, &num_platforms);
     check_cl(status, "get platform ids");
+
     printf("#platforms: %d\n", num_platforms);
-    cl_context_properties props[] = {CL_CONTEXT_PLATFORM, (cl_context_properties)platform_id, 0};
+    cl_context_properties *props = getContextProperties(platform_id);
 
     char info[4][128];
     status = clGetPlatformInfo(platform_id, CL_PLATFORM_PROFILE, 128, info[0], NULL);
@@ -70,11 +71,12 @@ int main(void)
     check_cl(status, "get platform name");
     status = clGetPlatformInfo(platform_id, CL_PLATFORM_VENDOR, 128, info[3], NULL);
     check_cl(status, "get platform vendor");
+
     printf("profile: %s\n", info[0]);
     printf("version: %s\n", info[1]);
     printf("name: %s\n", info[2]);
     printf("vendor: %s\n", info[3]);
-
+    
     cl_context context = clCreateContextFromType(props, CL_DEVICE_TYPE_GPU, NULL, NULL, &status);
     check_cl(status, "create context");
 
@@ -82,7 +84,7 @@ int main(void)
     cl_device_id device_id;
     status = clGetDeviceIDs(platform_id, CL_DEVICE_TYPE_GPU, 1, &device_id, NULL);
     check_cl(status, "get device ids");
-#if CL_VERSION_2_0
+#ifdef CL_VERSION_2_0
     queue = clCreateCommandQueueWithProperties(context, device_id, NULL, &status);
 #else
     queue = clCreateCommandQueue(context, device_id, 0, &status);
@@ -92,6 +94,7 @@ int main(void)
     // allocate memory objects
     mainOctCL = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, 9*sizeof(OctTreeNode), mainOctTree, &status);
     check_cl(status, "create buffer");
+
     cl_image_format fmt = { CL_RGBA, CL_FLOAT };
     cl_image_desc desc;
     desc.image_type = CL_MEM_OBJECT_IMAGE2D;
@@ -101,24 +104,33 @@ int main(void)
     desc.image_slice_pitch = 0;
     desc.num_mip_levels = 0;
     desc.num_samples = 0;
-#if CL_VERSION_2_0
+#ifdef CL_VERSION_2_0
     desc.mem_object = NULL;
 #else
     desc.buffer = NULL;
 #endif
-    image = clCreateImage(context, CL_MEM_WRITE_ONLY, &fmt, &desc, NULL, &status);
-    check_cl(status, "create image");
 
-    data4 = malloc(width * height * 4 * sizeof(*data4));
-    check_nn(data4, "data4");
+    glGenTextures(1, &texture);
+    glBindTexture(GL_TEXTURE_2D, texture);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_FLOAT, NULL);
+    glFinish();
+
+    image = clCreateFromGLTexture(context, CL_MEM_WRITE_ONLY, GL_TEXTURE_2D, 0, texture, &status);
+    check_cl(status, "create image");
 
     // create the compute program
     FILE *kernel_handle;
     fopen_s(&kernel_handle, "ray.cl", "rb");
     check_nn(kernel_handle, "fopen ray.cl");
+
     size_t n_bytes = fread(kernel_src, 1, 10239, kernel_handle);
     kernel_src[n_bytes] = '\0';
     check_ferror(kernel_handle, "fread");
+
     cl_program program = clCreateProgramWithSource(context, 1, &kernel_src, NULL, &status);
     check_cl(status, "create program");
 
@@ -143,6 +155,7 @@ int main(void)
     // create the compute kernel
     kernel = clCreateKernel(program, "ray_cl", &status);
     check_cl(status, "create kernel");
+
 #endif
     double last_xpos = 0, last_ypos = 0;
 	/* Loop until the user closes the window */
@@ -174,22 +187,6 @@ int main(void)
 		char title[16];
 		snprintf(title, 16, "%d ms", (int)((end - start) / (CLOCKS_PER_SEC / 1000)));
 		glfwSetWindowTitle(window, title);
-
-		//Rysowanie ramki na około viewportu
-		for (int i = 0; i < width; i++)
-		{
-			piksele[ARR_IDX(i, 0, 1)] = 1.;
-			piksele[ARR_IDX(i, 0, 2)] = 1.;
-			piksele[ARR_IDX(i, height - 1, 2)] = 1.;
-		}
-		for (int i = 0; i < height; i++)
-		{
-			piksele[ARR_IDX(0, i, 1)] = 1.;
-			piksele[ARR_IDX(0, i, 2)] = 1.;
-			piksele[ARR_IDX(width-1, i, 2)] = 1.;
-		}
-		// ostateczne rysowanie piksli powinno używać jakiejś innej techniki
-		glDrawPixels(width, height, GL_RGB, GL_FLOAT, piksele);
 
 		/* Swap front and back buffers */
 		glfwSwapBuffers(window);

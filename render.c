@@ -1,7 +1,7 @@
 ﻿#include "render.h"
 
 #include <math.h>
-#include <stddef.h>
+#include <stdlib.h>
 
 #include "cl.h"
 #include "error.h"
@@ -214,60 +214,74 @@ void captureOctTree(Point3f camera, Point3f target, Point3f up, int width, int h
     if (render_method == TracerCL) {
         // set the args values
         cl_int status;
+
+        status = clEnqueueAcquireGLObjects(queue, 1, &image, 0, NULL, NULL);
+        check_cl(status, "enqueue gl");
+
         status = clSetKernelArg(kernel, 0, sizeof(cl_float3), &camera);
         check_cl(status, "set arg 0");
         status = clSetKernelArg(kernel, 1, sizeof(cl_float3), &light);
         check_cl(status, "set arg 1");
         status = clSetKernelArg(kernel, 2, sizeof(cl_float3), &bottom_left_vec);
-        check_cl(status, "set arg 1");
-        status = clSetKernelArg(kernel, 3, sizeof(cl_float3), &dup);
         check_cl(status, "set arg 2");
-        status = clSetKernelArg(kernel, 4, sizeof(cl_float3), &dright);
+        status = clSetKernelArg(kernel, 3, sizeof(cl_float3), &dup);
         check_cl(status, "set arg 3");
-        status = clSetKernelArg(kernel, 5, sizeof(cl_mem), &mainOctCL);
+        status = clSetKernelArg(kernel, 4, sizeof(cl_float3), &dright);
         check_cl(status, "set arg 4");
-        status = clSetKernelArg(kernel, 6, sizeof(cl_mem), &image);
+        status = clSetKernelArg(kernel, 5, sizeof(cl_mem), &mainOctCL);
         check_cl(status, "set arg 5");
+        status = clSetKernelArg(kernel, 6, sizeof(cl_mem), &image);
+        check_cl(status, "set arg 6");
 
         // run kernel
         size_t global_work_size[] = {width, height};
         size_t local_work_size[] = {8, 8};
-        // XXX: is event necessary?
-        cl_event event;
-        status = clEnqueueNDRangeKernel(queue, kernel, 2, NULL, global_work_size, local_work_size, 0, NULL, &event);
+        status = clEnqueueNDRangeKernel(queue, kernel, 2, NULL, global_work_size, local_work_size, 0, NULL, NULL);
         check_cl(status, "enqueue kernel");
 
         size_t offset[] = {0, 0, 0};
         size_t dims[] = {width, height, 1};
-
-        status = clEnqueueReadImage(queue, image, 1, offset, dims, 0, 0, data4, 1, &event, NULL);
-        check_cl(status, "read");
-
-        status = clReleaseEvent(event);
-        check_cl(status, "release event");
+        status = clEnqueueReleaseGLObjects(queue, 1, &image, 0, NULL, NULL);
+        check_cl(status, "release gl");
 
         status = clFinish(queue);
         check_cl(status, "finish");
-    }
-#endif
 
-    for (int y = 0; y < height; y++) for (int x = 0; x < width; x++)
-    {
-        Color4f color = {0.,0.,0.};
-        if (render_method == TracerCL) {
-            color.r = data4[ARR_IDX4(x, y, 0)];
-            color.g = data4[ARR_IDX4(x, y, 1)];
-            color.b = data4[ARR_IDX4(x, y, 2)];
-        } else {
+        glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+        glClear(GL_COLOR_BUFFER_BIT);
+        glEnable(GL_TEXTURE_2D);
+        glBindTexture(GL_TEXTURE_2D, texture);
+
+        glBegin(GL_QUADS);
+        glTexCoord2i(0, 1);
+        glVertex2f(-1, 1.0f);
+        glTexCoord2i(1, 1);
+        glVertex2f(1.0f, 1.0f);
+        glTexCoord2i(1, 0);
+        glVertex2f(1.0f, -1.f);
+        glTexCoord2i(0, 0);
+        glVertex2f(-1, -1.f);
+        glEnd();
+        glDisable(GL_TEXTURE_2D);
+        glFinish();
+    } else {
+#endif
+        for (int y = 0; y < height; y++) for (int x = 0; x < width; x++)
+        {
+            Color4f color = {0.,0.,0.};
             Point3f temp_target =
                 vectMulScalar(vectMulScalar(bottom_left_vec, dup, (float)y), dright, (float)x);
             if (render_method == Stacking)
                 ray_cast_oct_tree_stacking(camera, temp_target, mainOctTree, 1.0, (Point3f) { 0, 0, 0 }, &color);
             else
                 ray_cast_oct_tree_stackless(camera, temp_target, mainOctTree, &color);
+            data[ARR_IDX(x, y, 0)] = color.r;
+            data[ARR_IDX(x, y, 1)] = color.g;
+            data[ARR_IDX(x, y, 2)] = color.b;
         }
-        data[ARR_IDX(x, y, 0)] = color.r;
-        data[ARR_IDX(x, y, 1)] = color.g;
-        data[ARR_IDX(x, y, 2)] = color.b;
+
+        glDrawPixels(width, height, GL_RGB, GL_FLOAT, data);
+#if TRACER_CL
     }
+#endif
 }

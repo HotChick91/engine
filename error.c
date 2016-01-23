@@ -1,5 +1,7 @@
 #include "error.h"
 
+#include <stdlib.h>
+
 #include "cl.h"
 
 void die(char *context, char *detail, int code) {

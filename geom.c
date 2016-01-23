@@ -1,5 +1,7 @@
 #include "geom.h"
 
+#include <math.h>
+
 Point3f vectMul(Point3f a, Point3f b)
 {
     return (Point3f) { a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x };
