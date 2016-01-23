@@ -2,6 +2,7 @@
 
 // this provides a nice _WIN32 definition
 #include <GLFW/glfw3.h>
+#include <Windows.h>
 
 // TODO: add support for EGL
 
@@ -27,11 +28,14 @@ cl_context_properties *getContextProperties(cl_platform_id platform_id) {
         0,
         CL_GL_CONTEXT_KHR,
         0,
+        CL_WGL_HDC_KHR,
+        0,
         0,
     };
     props[1] = (cl_context_properties)platform_id;
 #if _WIN32
     props[3] = (cl_context_properties)glfwGetWGLContext(window);
+    props[5] =  (cl_context_properties)wglGetCurrentDC();
 #elif __APPLE__
     props[3] = (cl_context_properties)glfwGetNSGLContext(window);
 #else
