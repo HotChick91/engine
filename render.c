@@ -142,8 +142,8 @@ next_ray:
         radius /= 2.f;
         center = (Point3f) {
             center.x + (2 * dx - 1) * radius,
-                center.y + (2 * dy - 1) * radius,
-                center.z + (2 * dz - 1) * radius
+            center.y + (2 * dy - 1) * radius,
+            center.z + (2 * dz - 1) * radius
         };
         goto next_ray;
     }
@@ -181,16 +181,16 @@ next_ray:
             // radius stays the same
             center = (Point3f) {
                 center.x + (2 * dx) * radius,
-                    center.y + (2 * dy) * radius,
-                    center.z + (2 * dz) * radius
+                center.y + (2 * dy) * radius,
+                center.z + (2 * dz) * radius
             };
 
             goto next_ray;
         }
         center = (Point3f) {
             center.x - (2 * tree->x - 1) * radius,
-                center.y - (2 * tree->y - 1) * radius,
-                center.z - (2 * tree->z - 1) * radius
+            center.y - (2 * tree->y - 1) * radius,
+            center.z - (2 * tree->z - 1) * radius
         };
         radius *= 2.f;
         tree = mainOctTree + tree->parent;

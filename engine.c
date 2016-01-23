@@ -16,37 +16,37 @@ static void initOctTree(void);
 
 int main(void)
 {
-	glfwSetErrorCallback(error_callback);
+    glfwSetErrorCallback(error_callback);
 
-	/* Initialize the library */
-	if (!glfwInit()){
-		fprintf(stderr, "Initialization failed.\n");
-		return -1;
-	}
+    /* Initialize the library */
+    if (!glfwInit()){
+        fprintf(stderr, "Initialization failed.\n");
+        return -1;
+    }
 
-	/* Create a windowed mode window and its OpenGL context */
+    /* Create a windowed mode window and its OpenGL context */
     window = glfwCreateWindow(width, height, "Hello World", NULL, NULL);
-	if (!window) {
-		glfwTerminate();
-		fprintf(stderr, "Error creating window.\n");
-		return -1;
-	}
+    if (!window) {
+        glfwTerminate();
+        fprintf(stderr, "Error creating window.\n");
+        return -1;
+    }
 
-	/* Make the window's context current */
-	glfwMakeContextCurrent(window);
-	glfwSetInputMode(window, GLFW_STICKY_MOUSE_BUTTONS, 1);
-	glfwSetKeyCallback(window, key_callback);
+    /* Make the window's context current */
+    glfwMakeContextCurrent(window);
+    glfwSetInputMode(window, GLFW_STICKY_MOUSE_BUTTONS, 1);
+    glfwSetKeyCallback(window, key_callback);
 
-	//**************************** generowanie przykładowych piksli
-	initOctTree();
-	camera_target = (Point3f) { cosf(horizontal_angle) * cosf(vertical_angle)
-							  , sinf(horizontal_angle) * cosf(vertical_angle)
-							  , sinf(vertical_angle)};
-	float * piksele = malloc(height*width*3*sizeof(*piksele));
+    //**************************** generowanie przykładowych piksli
+    initOctTree();
+    camera_target = (Point3f) { cosf(horizontal_angle) * cosf(vertical_angle)
+                              , sinf(horizontal_angle) * cosf(vertical_angle)
+                              , sinf(vertical_angle)};
+    float * piksele = malloc(height*width*3*sizeof(*piksele));
 
     printf("sizeof(OctTreeNode)=%zd\n", sizeof(OctTreeNode));
 
-	//****************************
+    //****************************
 
 #if TRACER_CL
     // prepare your anus
@@ -76,7 +76,7 @@ int main(void)
     printf("version: %s\n", info[1]);
     printf("name: %s\n", info[2]);
     printf("vendor: %s\n", info[3]);
-    
+
     cl_context context = clCreateContextFromType(props, CL_DEVICE_TYPE_GPU, NULL, NULL, &status);
     check_cl(status, "create context");
 
@@ -158,42 +158,42 @@ int main(void)
 
 #endif
     double last_xpos = 0, last_ypos = 0;
-	/* Loop until the user closes the window */
-	while (!glfwWindowShouldClose(window))
-	{
-		/* Render here */
-		for (int i = 0; i < height * width * 3; i++)
-			piksele[i] = 0.0;
+    /* Loop until the user closes the window */
+    while (!glfwWindowShouldClose(window))
+    {
+        /* Render here */
+        for (int i = 0; i < height * width * 3; i++)
+            piksele[i] = 0.0;
 
-		double xpos, ypos;
-		glfwGetCursorPos(window, &xpos, &ypos);
-		xpos -= last_xpos;
-		ypos -= last_ypos;
-		last_xpos += xpos;
-		last_ypos += ypos;
-		if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_1) == GLFW_PRESS) {
-			const double alpha = 0.001;
-			horizontal_angle += (float)(xpos * alpha);
-			vertical_angle += (float)(ypos * alpha);
-			camera_target = (Point3f) { cosf(horizontal_angle) * cosf(vertical_angle)
-									  , sinf(horizontal_angle) * cosf(vertical_angle)
-									  , sinf(vertical_angle)};
-		}
-		clock_t start = clock();
-		captureOctTree(camera_pos, camera_target, up, width, height, piksele);
-		clock_t end = clock();
+        double xpos, ypos;
+        glfwGetCursorPos(window, &xpos, &ypos);
+        xpos -= last_xpos;
+        ypos -= last_ypos;
+        last_xpos += xpos;
+        last_ypos += ypos;
+        if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_1) == GLFW_PRESS) {
+            const double alpha = 0.001;
+            horizontal_angle += (float)(xpos * alpha);
+            vertical_angle += (float)(ypos * alpha);
+            camera_target = (Point3f) { cosf(horizontal_angle) * cosf(vertical_angle)
+                                      , sinf(horizontal_angle) * cosf(vertical_angle)
+                                      , sinf(vertical_angle)};
+        }
+        clock_t start = clock();
+        captureOctTree(camera_pos, camera_target, up, width, height, piksele);
+        clock_t end = clock();
 
-		// show render time in window title
-		char title[16];
-		snprintf(title, 16, "%d ms", (int)((end - start) / (CLOCKS_PER_SEC / 1000)));
-		glfwSetWindowTitle(window, title);
+        // show render time in window title
+        char title[16];
+        snprintf(title, 16, "%d ms", (int)((end - start) / (CLOCKS_PER_SEC / 1000)));
+        glfwSetWindowTitle(window, title);
 
-		/* Swap front and back buffers */
-		glfwSwapBuffers(window);
+        /* Swap front and back buffers */
+        glfwSwapBuffers(window);
 
-		/* Poll for and process events */
-		glfwPollEvents();
-	}
+        /* Poll for and process events */
+        glfwPollEvents();
+    }
 
 #if TRACER_CL
     clReleaseMemObject(mainOctCL);
@@ -203,85 +203,85 @@ int main(void)
     clReleaseCommandQueue(queue);
     clReleaseContext(context);
 #endif
-	glfwDestroyWindow(window);
+    glfwDestroyWindow(window);
 
-	glfwTerminate();
-	return 0;
+    glfwTerminate();
+    return 0;
 }
 
 static void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods)
 {
-	if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
-		glfwSetWindowShouldClose(window, GL_TRUE);
-	if (action == GLFW_PRESS || action == GLFW_REPEAT)
-	{
-		Point3f right = vectMul(camera_target, up);
-		switch (key) {
-			case GLFW_KEY_W:
-				camera_pos = vectMulScalar(camera_pos, camera_target, 0.05f);
-				break;
-			case GLFW_KEY_S:
-				camera_pos = vectMulScalar(camera_pos, camera_target, -0.05f);
-				break;
-			case GLFW_KEY_A:
-				camera_pos = vectMulScalar(camera_pos, right, -0.05f);
-				break;
-			case GLFW_KEY_D:
-				camera_pos = vectMulScalar(camera_pos, right, 0.05f);
-				break;
-			case GLFW_KEY_Z:
-				camera_pos = vectMulScalar(camera_pos, up, -0.05f);
-				break;
-			case GLFW_KEY_Q:
-				camera_pos = vectMulScalar(camera_pos, up, 0.05f);
-				break;
-			case GLFW_KEY_I:
-				vertical_angle += 0.05f;
-				break;
-			case GLFW_KEY_K:
-				vertical_angle -= 0.05f;
-				break;
-			case GLFW_KEY_L:
-				horizontal_angle -= 0.05f;
-				break;
-			case GLFW_KEY_J:
-				horizontal_angle += 0.05f;
-				break;
-			case GLFW_KEY_M:
-				light = vectMulScalar(camera_pos, camera_target, 1.f);
-				break;
-			case GLFW_KEY_P:
-				printf("Current rendering method is: ");
-				if (render_method == Stacking) {
-					render_method = Stackless;
-					printf("Stackless");
+    if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
+        glfwSetWindowShouldClose(window, GL_TRUE);
+    if (action == GLFW_PRESS || action == GLFW_REPEAT)
+    {
+        Point3f right = vectMul(camera_target, up);
+        switch (key) {
+            case GLFW_KEY_W:
+                camera_pos = vectMulScalar(camera_pos, camera_target, 0.05f);
+                break;
+            case GLFW_KEY_S:
+                camera_pos = vectMulScalar(camera_pos, camera_target, -0.05f);
+                break;
+            case GLFW_KEY_A:
+                camera_pos = vectMulScalar(camera_pos, right, -0.05f);
+                break;
+            case GLFW_KEY_D:
+                camera_pos = vectMulScalar(camera_pos, right, 0.05f);
+                break;
+            case GLFW_KEY_Z:
+                camera_pos = vectMulScalar(camera_pos, up, -0.05f);
+                break;
+            case GLFW_KEY_Q:
+                camera_pos = vectMulScalar(camera_pos, up, 0.05f);
+                break;
+            case GLFW_KEY_I:
+                vertical_angle += 0.05f;
+                break;
+            case GLFW_KEY_K:
+                vertical_angle -= 0.05f;
+                break;
+            case GLFW_KEY_L:
+                horizontal_angle -= 0.05f;
+                break;
+            case GLFW_KEY_J:
+                horizontal_angle += 0.05f;
+                break;
+            case GLFW_KEY_M:
+                light = vectMulScalar(camera_pos, camera_target, 1.f);
+                break;
+            case GLFW_KEY_P:
+                printf("Current rendering method is: ");
+                if (render_method == Stacking) {
+                    render_method = Stackless;
+                    printf("Stackless");
 #if TRACER_CL
                 } else if (render_method == Stackless) {
                     render_method = TracerCL;
                     printf("TracerCL");
 #endif
                 } else {
-					render_method = Stacking;
-					printf("Stacking");
-				}
-				printf("\n");
-				break;
-			/*default:*/
-		}
-		camera_target = (Point3f) { cosf(horizontal_angle) * cosf(vertical_angle)
-								  , sinf(horizontal_angle) * cosf(vertical_angle)
-								  , sinf(vertical_angle)};
-	}
-	printf("Camera position is: (%f, %f %f)\n", camera_pos.x, camera_pos.y, camera_pos.z);
-	printf("Horizontal angle: %f, Vertical angle: %f\n", horizontal_angle, vertical_angle);
-	printf("Camera target is: (%f, %f %f)\n", camera_target.x, camera_target.y, camera_target.z);
+                    render_method = Stacking;
+                    printf("Stacking");
+                }
+                printf("\n");
+                break;
+            /*default:*/
+        }
+        camera_target = (Point3f) { cosf(horizontal_angle) * cosf(vertical_angle)
+                                  , sinf(horizontal_angle) * cosf(vertical_angle)
+                                  , sinf(vertical_angle)};
+    }
+    printf("Camera position is: (%f, %f %f)\n", camera_pos.x, camera_pos.y, camera_pos.z);
+    printf("Horizontal angle: %f, Vertical angle: %f\n", horizontal_angle, vertical_angle);
+    printf("Camera target is: (%f, %f %f)\n", camera_target.x, camera_target.y, camera_target.z);
 }
 
 static void initOctTree(void)
 {
     mainOctTree = malloc(9*sizeof(*mainOctTree));
     mainOctTree->parent = -1;
-	mainOctTree->type = Partial;
+    mainOctTree->type = Partial;
     OctTreeNode tmp;
     tmp.parent = 0;
     tmp.type = Solid;

@@ -46,8 +46,8 @@ kernel void ray_cl(float3 origin, float3 light, float3 bottom_left_vec, float3 d
         }
 
         if (tree->type == Solid) {
-			float l_dist = distance(light, origin);
-			float intensity = 2.f / (2.f + l_dist * l_dist);
+            float l_dist = distance(light, origin);
+            float intensity = 2.f / (2.f + l_dist * l_dist);
             write_imagef(image, my_px, tree->color * intensity);
             return;
         }
