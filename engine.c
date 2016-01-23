@@ -12,7 +12,7 @@
 #include "types.h"
 
 static void key_callback(GLFWwindow* windows, int key, int scancode, int action, int mods);
-static void initOctTree();
+static void initOctTree(void);
 
 int main(void)
 {
@@ -277,7 +277,7 @@ static void key_callback(GLFWwindow* window, int key, int scancode, int action, 
 	printf("Camera target is: (%f, %f %f)\n", camera_target.x, camera_target.y, camera_target.z);
 }
 
-static void initOctTree()
+static void initOctTree(void)
 {
     mainOctTree = malloc(9*sizeof(*mainOctTree));
     mainOctTree->parent = -1;
