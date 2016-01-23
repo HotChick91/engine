@@ -1,0 +1,31 @@
+name:            gameengine
+version:         0.0.1.0
+license:         AllRightsReserved
+author:         Envielox <Envielox@gmail.com>
+synopsis:        New approach to gameengining
+cabal-version:   >= 1.8
+build-type:      Simple
+description: New approach to gameengining
+
+extra-source-files:
+    cabal.sandbox.config
+    engine.c
+    file_loader.hs
+    Makefile
+    model.json
+
+library
+  exposed-modules:
+    FileLoader
+
+
+  build-depends:
+      aeson >= 0.10.0.0,
+      base >= 4.5 && < 4.9,
+      bytestring >= 0.10.6,
+      unordered-containers >= 0.2.6,
+      vector >= 0.11.0,
+      scientific >= 0.3.4
+
+  ghc-options: -O2 -Wall
+

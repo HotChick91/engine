@@ -1,1 +1,4 @@
 /engine
+file_loader_stub.h
+*.o
+*.hi

@@ -1,0 +1,11 @@
+[
+  {"id" : 0, "type": "Partial", "children": [1,2,3,4,5,6,7,8]}
+, {"id" : 1, "type": "Solid", "color" : {"r": 0.0, "g": 0.0, "b": 1.0}}
+, {"id" : 2, "type": "Solid", "color" : {"r": 1.0, "g": 0.0, "b": 0.0}}
+, {"id" : 3, "type": "Solid", "color" : {"r": 1.0, "g": 0.0, "b": 1.0}}
+, {"id" : 4, "type": "Empty"}
+, {"id" : 5, "type": "Solid", "color" : {"r": 0.0, "g": 1.0, "b": 1.0}}
+, {"id" : 6, "type": "Empty"}
+, {"id" : 7, "type": "Empty"}
+, {"id" : 8, "type": "Empty"}
+]
