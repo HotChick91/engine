@@ -18,7 +18,12 @@
 #include "FileLoader_stub.h"
 #endif
 
-void load_file(const char* name);
+#pragma once
+
+void load_file(HsPtr name);
+void push_oct_tree_empty();
+void push_oct_tree_solid(float r, float g, float b);
+void push_oct_tree_partial(int c0, int c1, int c2, int c3, int c4, int c5, int c6, int c7);
 
 static void key_callback(GLFWwindow* windows, int key, int scancode, int action, int mods);
 static void initOctTree(void);

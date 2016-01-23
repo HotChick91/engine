@@ -7,15 +7,14 @@ cabal-version:   >= 1.8
 build-type:      Simple
 description: New approach to gameengining
 
-extra-source-files:
-    --cabal.sandbox.config
-    engine.c
-    --Makefile
-    --model.json
-
-library
-  exposed-modules:
-    FileLoader
+executable engine
+  main-is:  engine.c
+  includes: types.h
+  c-sources: cl.c error.c geom.c globals.c render.c
+  cc-options:-g -std=c11 -Wall -DTRACER_CL=0
+  include-dirs: /usr/lib/ghc-7.10.3/include/
+  extra-libraries: glfw GL m
+  Other-Modules: FileLoader
 
 
   build-depends:
@@ -26,5 +25,6 @@ library
       vector >= 0.11.0,
       scientific >= 0.3.4
 
-  ghc-options: -O2 -Wall -fPIC -dynamic -shared
+  ghc-options: -no-hs-main -O2 -Wall
+  -- -dynamic
 

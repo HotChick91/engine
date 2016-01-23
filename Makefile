@@ -4,14 +4,9 @@ LDFLAGS = -lglfw -lGL -lm .cabal-sandbox/lib/i386-linux-ghc-7.10.3/*/*.so /usr/l
 
 ALL: engine
 
-engine: engine.o FileLoader.o cl.o error.o geom.o globals.o render.o types.h
-	ghc -no-hs-main -o $@ $^ ${LDFLAGS}
-
-FileLoader.o: FileLoader.hs
+engine:
 	cabal build
-	cp dist/build/FileLoader.o .
-	cp dist/build/FileLoader_stub.h .
-	#ghc --make -c FileLoader.hs
+	cp dist/build/engine/engine .
 
 clean:
 	rm -f engine *.o FileLoader.h FileLoader.hi FileLoader_stub.h
