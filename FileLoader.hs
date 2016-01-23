@@ -3,6 +3,8 @@ module FileLoader where
 
 import Prelude as P
 
+import Control.Monad (unless)
+
 import Data.List
 import Data.Foldable
 import Data.Aeson
@@ -18,8 +20,6 @@ import Foreign.C.Types
 import Foreign.C.String
 import Foreign.Marshal.Array()
 
-{-foreign import ccall "add_elem" add_elem_c :: Int -> Int -> IO ()-}
-{-foreign import ccall "set_size" set_size_c :: Int -> IO ()-}
 foreign import ccall "push_oct_tree_partial" push_partial_c :: CInt ->CInt ->CInt ->CInt ->CInt ->CInt ->CInt ->CInt -> IO ()
 foreign import ccall "push_oct_tree_solid" push_solid_c :: CFloat -> CFloat -> CFloat -> IO ()
 foreign import ccall "push_oct_tree_empty" push_empty_c :: IO ()
@@ -27,17 +27,14 @@ foreign export ccall load_file :: CString -> IO ()
 
 data Node = Empty | Solid (Float, Float, Float) | Partial Int Int Int Int Int Int Int Int
 
-{-push_partial_c :: Int ->Int ->Int ->Int ->Int ->Int ->Int ->Int -> IO ()-}
+{-push_partial_c :: CInt ->CInt ->CInt ->CInt ->CInt ->CInt ->CInt ->CInt -> IO ()-}
 {-push_partial_c a b c d e f g h = P.putStrLn "pushed partial"-}
 
 {-push_empty_c :: IO ()-}
 {-push_empty_c = P.putStrLn "pushed empty"-}
 
-{-push_solid_c :: Float -> Float -> Float -> IO ()-}
+{-push_solid_c :: CFloat -> CFloat -> CFloat -> IO ()-}
 {-push_solid_c r g b = P.putStrLn "pushed solid"-}
-
-{-add_elem_c :: Int -> Int -> IO ()-}
-{-add_elem_c a b = P.putStrLn $ show a ++ " " ++ show b-}
 
 processNode :: Value -> IO ()
 processNode o = do
@@ -107,18 +104,26 @@ load_file :: CString -> IO ()
 load_file a = do
   str <- peekCString a
   P.putStrLn $ "Loading file: " ++ show str
-  if not $ Data.List.isSuffixOf ".json" str then fail "Wrong filetype." else return ()
+  unless (Data.List.isSuffixOf ".json" str) $ fail "Wrong filetype."
   P.putStrLn $ "Going good 0"
-  {-fileContent <- L.readFile str-}
-  P.putStrLn $ "Going good 1"
-  {-P.putStrLn $ show $  unpack fileContent-}
-  {-case decode fileContent of-}
-    {-Nothing -> P.putStrLn "Nothing"-}
-    {-Just (Object o) -> P.putStrLn $ show o-}
-    {-Just (Array ar) -> (P.putStrLn $ "Arr: " ++ show ar) >> forM_ ar processNode-}
-    {-Just _ -> P.putStrLn "something else"-}
-
-
-  -- add_elem id type
-
+  fileContent <- L.readFile str
+  {-let fileContent = L8.pack ("[" ++-}
+                      {-"  {\"id\" : 0, \"type\": \"Partial\", \"children\": [1,2,3,4,5,6,7,8]}" ++-}
+                      {-", {\"id\" : 1, \"type\": \"Solid\", \"color\" : {\"r\": 0.0, \"g\": 0.0, \"b\": 1.0}}" ++-}
+                      {-", {\"id\" : 2, \"type\": \"Solid\", \"color\" : {\"r\": 1.0, \"g\": 0.0, \"b\": 0.0}}" ++-}
+                      {-", {\"id\" : 3, \"type\": \"Solid\", \"color\" : {\"r\": 1.0, \"g\": 0.0, \"b\": 1.0}}" ++-}
+                      {-", {\"id\" : 4, \"type\": \"Empty\"}" ++-}
+                      {-", {\"id\" : 5, \"type\": \"Solid\", \"color\" : {\"r\": 0.0, \"g\": 1.0, \"b\": 1.0}}" ++-}
+                      {-", {\"id\" : 6, \"type\": \"Empty\"}" ++-}
+                      {-", {\"id\" : 7, \"type\": \"Empty\"}" ++-}
+                      {-", {\"id\" : 8, \"type\": \"Empty\"}" ++-}
+                      {-"]")-}
+  fileContent `seq` P.putStrLn $ "Going good 1"
+  P.putStrLn $ show $  L.unpack fileContent
+  P.putStrLn $ "Going good 2"
+  case decode fileContent of
+    Nothing -> P.putStrLn "Nothing"
+    Just (Array ar) -> forM_ ar processNode
+    Just _ -> P.putStrLn "something else"
+  P.putStrLn $ "Going good 3"
 

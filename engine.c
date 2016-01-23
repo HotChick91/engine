@@ -6,7 +6,7 @@
 #include "HsFFI.h"
 
 #ifdef __GLASGOW_HASKELL__
-#include "file_loader_stub.h"
+#include "FileLoader_stub.h"
 #endif
 
 #define ARR_IDX(x, y, col) (((y) * width + (x)) * 3) + (col)
@@ -504,6 +504,7 @@ next_ray:
 
 void push_oct_tree_partial(int c0, int c1, int c2, int c3, int c4, int c5, int c6, int c7)
 {
+	printf("Pushing partial %d %d %d %d %d %d %d %d\n", c0, c1, c2, c3, c4, c5, c6, c7 );
 	mainOctTree[octTreeLength].type = Partial;
 	mainOctTree[octTreeLength].nodes[0][1][1] = c0;
 	mainOctTree[c0].parent = octTreeLength;
@@ -551,6 +552,7 @@ void push_oct_tree_partial(int c0, int c1, int c2, int c3, int c4, int c5, int c
 
 void push_oct_tree_solid(float r, float g, float b)
 {
+	printf("Pushing solid %f %f %f\n", r, g, b);
 	mainOctTree[octTreeLength].type = Solid;
 	mainOctTree[octTreeLength].color = (Color3f) {r,g,b};
 	octTreeLength++;
@@ -558,6 +560,7 @@ void push_oct_tree_solid(float r, float g, float b)
 
 void push_oct_tree_empty()
 {
+	printf("Pushing empty\n");
 	mainOctTree[octTreeLength].type = Empty;
 	octTreeLength++;
 }
@@ -571,89 +574,7 @@ void initOctTree()
 	load_file("model.json");
 
 	mainOctTree[0].parent = -1;
-
-	/*mainOctTree->parent = NULL;*/
-	/*mainOctTree->center = (Point3f){0.,0.,0.};*/
-	/*mainOctTree->radius = 1.;*/
-	/*mainOctTree->type = Partial;*/
-	/*OctTreeNode* tmp;*/
-	/*tmp = malloc(sizeof(*tmp));*/
-	/*tmp->parent = mainOctTree;*/
-	/*tmp->center = (Point3f){-.5, .5, .5};*/
-	/*tmp->radius = .5;*/
-	/*tmp->type = Solid;*/
-	/*tmp->color = (Color3f) {0.0, 0.0, 1.0};*/
-	/*tmp->x = 0;*/
-	/*tmp->y = 1;*/
-	/*tmp->z = 1;*/
-	/*mainOctTree->nodes[tmp->x][tmp->y][tmp->z] = tmp;*/
-	/*tmp = malloc(sizeof(*tmp));*/
-	/*tmp->parent = mainOctTree;*/
-	/*tmp->center = (Point3f){.5, .5, .5};*/
-	/*tmp->radius = .5;*/
-	/*tmp->type = Solid;*/
-	/*tmp->color = (Color3f) {1.0, 0.0, 0.0};*/
-	/*tmp->x = 1;*/
-	/*tmp->y = 1;*/
-	/*tmp->z = 1;*/
-	/*mainOctTree->nodes[tmp->x][tmp->y][tmp->z] = tmp;*/
-	/*tmp = malloc(sizeof(*tmp));*/
-	/*tmp->parent = mainOctTree;*/
-	/*tmp->center = (Point3f){-.5, -.5, .5};*/
-	/*tmp->radius = .5;*/
-	/*tmp->type = Solid;*/
-	/*tmp->color = (Color3f) {1.0, 0.0, 1.0};*/
-	/*tmp->x = 0;*/
-	/*tmp->y = 0;*/
-	/*tmp->z = 1;*/
-	/*mainOctTree->nodes[tmp->x][tmp->y][tmp->z] = tmp;*/
-	/*tmp = malloc(sizeof(*tmp));*/
-	/*tmp->parent = mainOctTree;*/
-	/*tmp->center = (Point3f){.5, -.5, .5};*/
-	/*tmp->radius = .5;*/
-	/*tmp->type = Empty;*/
-	/*tmp->x = 1;*/
-	/*tmp->y = 0;*/
-	/*tmp->z = 1;*/
-	/*mainOctTree->nodes[tmp->x][tmp->y][tmp->z] = tmp;*/
-	/*tmp = malloc(sizeof(*tmp));*/
-	/*tmp->parent = mainOctTree;*/
-	/*tmp->center = (Point3f){-.5, .5, -.5};*/
-	/*tmp->radius = .5;*/
-	/*tmp->type = Solid;*/
-	/*tmp->color = (Color3f) {0.0, 1.0, 0.0};*/
-	/*tmp->x = 0;*/
-	/*tmp->y = 1;*/
-	/*tmp->z = 0;*/
-	/*mainOctTree->nodes[tmp->x][tmp->y][tmp->z] = tmp;*/
-	/*tmp = malloc(sizeof(*tmp));*/
-	/*tmp->parent = mainOctTree;*/
-	/*tmp->center = (Point3f){.5, .5, -.5};*/
-	/*tmp->radius = .5;*/
-	/*tmp->type = Empty;*/
-	/*tmp->x = 1;*/
-	/*tmp->y = 1;*/
-	/*tmp->z = 0;*/
-	/*mainOctTree->nodes[tmp->x][tmp->y][tmp->z] = tmp;*/
-	/*tmp = malloc(sizeof(*tmp));*/
-	/*tmp->parent = mainOctTree;*/
-	/*tmp->center = (Point3f){-.5, -.5, -.5};*/
-	/*tmp->radius = .5;*/
-	/*tmp->type = Empty;*/
-	/*[>tmp->color = (Color3f) {1.0, 1.0, 0.0};<]*/
-	/*tmp->x = 0;*/
-	/*tmp->y = 0;*/
-	/*tmp->z = 0;*/
-	/*mainOctTree->nodes[tmp->x][tmp->y][tmp->z] = tmp;*/
-	/*tmp = malloc(sizeof(*tmp));*/
-	/*tmp->parent = mainOctTree;*/
-	/*tmp->center = (Point3f){.5, -.5, -.5};*/
-	/*tmp->radius = .5;*/
-	/*tmp->type = Empty;*/
-	/*tmp->x = 1;*/
-	/*tmp->y = 0;*/
-	/*tmp->z = 0;*/
-	/*mainOctTree->nodes[tmp->x][tmp->y][tmp->z] = tmp;*/
+	printf("Done loading.\n");
 }
 
 void captureOctTree(Point3f camera, Point3f target, Point3f up, int width, int height, float* data)

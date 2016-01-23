@@ -8,11 +8,10 @@ build-type:      Simple
 description: New approach to gameengining
 
 extra-source-files:
-    cabal.sandbox.config
+    --cabal.sandbox.config
     engine.c
-    file_loader.hs
-    Makefile
-    model.json
+    --Makefile
+    --model.json
 
 library
   exposed-modules:
@@ -27,5 +26,5 @@ library
       vector >= 0.11.0,
       scientific >= 0.3.4
 
-  ghc-options: -O2 -Wall
+  ghc-options: -O2 -Wall -fPIC -dynamic -shared
 
