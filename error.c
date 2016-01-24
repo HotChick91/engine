@@ -20,12 +20,10 @@ void check_ferror(FILE *stream, char *msg) {
         die(msg, "ferror", errord);
 }
 
-#if TRACER_CL
 void check_cl(cl_int status, char *msg) {
     if (status != CL_SUCCESS)
         die(msg, "opencl error", status);
 }
-#endif
 
 void error_callback(int error, const char* description)
 {

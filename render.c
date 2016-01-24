@@ -210,7 +210,6 @@ void captureOctTree(Point3f camera, Point3f target, Point3f up, int width, int h
     Point3f dright = vectDiv(right, (float)width);
     Point3f dup = vectDiv(up, (float)height);
 
-#if TRACER_CL
     if (render_method == TracerCL) {
         // set the args values
         cl_int status;
@@ -263,7 +262,6 @@ void captureOctTree(Point3f camera, Point3f target, Point3f up, int width, int h
         glDisable(GL_TEXTURE_2D);
         glFinish();
     } else {
-#endif
         for (int y = 0; y < height; y++) for (int x = 0; x < width; x++)
         {
             Color4f color = {0.,0.,0.};
@@ -279,7 +277,5 @@ void captureOctTree(Point3f camera, Point3f target, Point3f up, int width, int h
         }
 
         glDrawPixels(width, height, GL_RGB, GL_FLOAT, data);
-#if TRACER_CL
     }
-#endif
 }

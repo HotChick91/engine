@@ -11,17 +11,11 @@ flag debug
   description: compile C with -g and -O0
   default: False
 
-flag cl
-  description: compile with OpenCL support
-  default: True
-
 executable engine
   main-is:  engine.c
   c-sources: cl.c error.c geom.c globals.c render.c
   Other-Modules: FileLoader
-  extra-libraries: m GL glfw
-  if flag(cl)
-    extra-libraries: OpenCL
+  extra-libraries: m GL glfw OpenCL
 
   build-depends:
       aeson >= 0.10.0.0,
@@ -38,5 +32,3 @@ executable engine
     cc-options: -g
   else
     cc-options: -O2
-  if !flag(cl)
-    cc-options: -DTRACER_CL=0

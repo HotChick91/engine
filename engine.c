@@ -23,6 +23,107 @@ void push_oct_tree_partial(int c0, int c1, int c2, int c3, int c4, int c5, int c
 static void key_callback(GLFWwindow* windows, int key, int scancode, int action, int mods);
 static void initOctTree(void);
 
+#define SOFT_CHECK_CL(status, msg) do {if (status != CL_SUCCESS) {num_platforms = 0; fprintf(stderr, "WARNING: %s (%d)\n", msg, status); return;}} while (0)
+static void init_cl(void)
+{
+    cl_int status;
+    cl_platform_id platform_id;
+	cl_context context;
+	cl_program program;
+
+    char *kernel_src = malloc(10240);
+    check_nn(kernel_src, "kernel_src");
+
+    status = clGetPlatformIDs(1, &platform_id, &num_platforms);
+	SOFT_CHECK_CL(status, "get platform ids");
+
+    printf("#platforms: %u\n", num_platforms);
+	if (num_platforms == 0)
+		return;
+
+	char info[4][128];
+	status = clGetPlatformInfo(platform_id, CL_PLATFORM_PROFILE, 128, info[0], NULL);
+	SOFT_CHECK_CL(status, "get platform profile");
+	status = clGetPlatformInfo(platform_id, CL_PLATFORM_VERSION, 128, info[1], NULL);
+	SOFT_CHECK_CL(status, "get platform version");
+	status = clGetPlatformInfo(platform_id, CL_PLATFORM_NAME, 128, info[2], NULL);
+	SOFT_CHECK_CL(status, "get platform name");
+	status = clGetPlatformInfo(platform_id, CL_PLATFORM_VENDOR, 128, info[3], NULL);
+	SOFT_CHECK_CL(status, "get platform vendor");
+
+	printf("profile: %s\n", info[0]);
+	printf("version: %s\n", info[1]);
+	printf("name: %s\n", info[2]);
+	printf("vendor: %s\n", info[3]);
+
+	cl_context_properties *props = getContextProperties(platform_id);
+	context = clCreateContextFromType(props, CL_DEVICE_TYPE_GPU, NULL, NULL, &status);
+	SOFT_CHECK_CL(status, "create context");
+
+	// create a command queue
+	cl_device_id device_id;
+	status = clGetDeviceIDs(platform_id, CL_DEVICE_TYPE_GPU, 1, &device_id, NULL);
+	SOFT_CHECK_CL(status, "get device ids");
+
+	queue = clCreateCommandQueue(context, device_id, 0, &status);
+	SOFT_CHECK_CL(status, "create command queue");
+
+	// allocate memory objects
+	mainOctCL = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, 9*sizeof(OctTreeNode), mainOctTree, &status);
+	SOFT_CHECK_CL(status, "create buffer");
+
+	glGenTextures(1, &texture);
+	glBindTexture(GL_TEXTURE_2D, texture);
+
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_FLOAT, NULL);
+	glFinish();
+
+	image = clCreateFromGLTexture(context, CL_MEM_WRITE_ONLY, GL_TEXTURE_2D, 0, texture, &status);
+	SOFT_CHECK_CL(status, "create image");
+
+	// create the compute program
+	FILE *kernel_handle = fopen("ray.cl", "rb");
+	check_nn(kernel_handle, "fopen ray.cl");
+
+	size_t n_bytes = fread(kernel_src, 1, 10239, kernel_handle);
+	kernel_src[n_bytes] = '\0';
+	check_ferror(kernel_handle, "fread");
+
+	program = clCreateProgramWithSource(context, 1, (const char **)&kernel_src, NULL, &status);
+	SOFT_CHECK_CL(status, "create program");
+
+	// build the compute program executable
+	status = clBuildProgram(program, 0, NULL, NULL, NULL, NULL);
+	if (status != CL_BUILD_PROGRAM_FAILURE && status != CL_SUCCESS) {
+		SOFT_CHECK_CL(status, "build program");
+	} else {
+		size_t log_size;
+		status = clGetProgramBuildInfo(program, device_id, CL_PROGRAM_BUILD_LOG, 0, NULL, &log_size);
+		SOFT_CHECK_CL(status, "get program build log size");
+
+		char *log = malloc(log_size);
+		check_nn(log, "log");
+
+		status = clGetProgramBuildInfo(program, device_id, CL_PROGRAM_BUILD_LOG, log_size, log, NULL);
+		SOFT_CHECK_CL(status, "get program build log");
+
+		fprintf(stderr, "build kernel log:\n%s\n", log);
+	}
+
+	// create the compute kernel
+	kernel = clCreateKernel(program, "ray_cl", &status);
+	SOFT_CHECK_CL(status, "create kernel");
+
+	status = clReleaseProgram(program);
+	SOFT_CHECK_CL(status, "release program");
+
+	status = clReleaseContext(context);
+	SOFT_CHECK_CL(status, "release context");
+}
+
 int main(int argc, char* argv[])
 {
 	glfwSetErrorCallback(error_callback);
@@ -59,105 +160,7 @@ int main(int argc, char* argv[])
 
 	//****************************
 
-#if TRACER_CL
-    // prepare your anus
-    // i mean gpu
-    cl_int status;
-    cl_platform_id platform_id;
-    cl_context context;
-    cl_program program;
-
-    char *kernel_src = malloc(10240);
-    check_nn(kernel_src, "kernel_src");
-
-    status = clGetPlatformIDs(1, &platform_id, &num_platforms);
-    if (status == CL_PLATFORM_NOT_FOUND_KHR) {
-		num_platforms = 0;
-		fprintf(stderr, "WARNING: platform not found\n");
-	} else {
-		check_cl(status, "get platform ids");
-	}
-
-    printf("#platforms: %u\n", num_platforms);
-
-    if (num_platforms > 0) {
-		char info[4][128];
-		status = clGetPlatformInfo(platform_id, CL_PLATFORM_PROFILE, 128, info[0], NULL);
-		check_cl(status, "get platform profile");
-		status = clGetPlatformInfo(platform_id, CL_PLATFORM_VERSION, 128, info[1], NULL);
-		check_cl(status, "get platform version");
-		status = clGetPlatformInfo(platform_id, CL_PLATFORM_NAME, 128, info[2], NULL);
-		check_cl(status, "get platform name");
-		status = clGetPlatformInfo(platform_id, CL_PLATFORM_VENDOR, 128, info[3], NULL);
-		check_cl(status, "get platform vendor");
-
-		printf("profile: %s\n", info[0]);
-		printf("version: %s\n", info[1]);
-		printf("name: %s\n", info[2]);
-		printf("vendor: %s\n", info[3]);
-
-		cl_context_properties *props = getContextProperties(platform_id);
-		context = clCreateContextFromType(props, CL_DEVICE_TYPE_GPU, NULL, NULL, &status);
-		check_cl(status, "create context");
-
-		// create a command queue
-		cl_device_id device_id;
-		status = clGetDeviceIDs(platform_id, CL_DEVICE_TYPE_GPU, 1, &device_id, NULL);
-		check_cl(status, "get device ids");
-
-		queue = clCreateCommandQueue(context, device_id, 0, &status);
-		check_cl(status, "create command queue");
-
-		// allocate memory objects
-		mainOctCL = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, 9*sizeof(OctTreeNode), mainOctTree, &status);
-		check_cl(status, "create buffer");
-
-		glGenTextures(1, &texture);
-		glBindTexture(GL_TEXTURE_2D, texture);
-
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_FLOAT, NULL);
-		glFinish();
-
-		image = clCreateFromGLTexture(context, CL_MEM_WRITE_ONLY, GL_TEXTURE_2D, 0, texture, &status);
-		check_cl(status, "create image");
-
-		// create the compute program
-		FILE *kernel_handle = fopen("ray.cl", "rb");
-		check_nn(kernel_handle, "fopen ray.cl");
-
-		size_t n_bytes = fread(kernel_src, 1, 10239, kernel_handle);
-		kernel_src[n_bytes] = '\0';
-		check_ferror(kernel_handle, "fread");
-
-		program = clCreateProgramWithSource(context, 1, (const char **)&kernel_src, NULL, &status);
-		check_cl(status, "create program");
-
-		// build the compute program executable
-		status = clBuildProgram(program, 0, NULL, NULL, NULL, NULL);
-		if (status != CL_BUILD_PROGRAM_FAILURE && status != CL_SUCCESS) {
-			check_cl(status, "build program");
-		} else {
-			size_t log_size;
-			status = clGetProgramBuildInfo(program, device_id, CL_PROGRAM_BUILD_LOG, 0, NULL, &log_size);
-			check_cl(status, "get program build log size");
-
-			char *log = malloc(log_size);
-			check_nn(log, "log");
-
-			status = clGetProgramBuildInfo(program, device_id, CL_PROGRAM_BUILD_LOG, log_size, log, NULL);
-			check_cl(status, "get program build log");
-
-			fprintf(stderr, "build kernel log:\n%s\n", log);
-		}
-
-		// create the compute kernel
-		kernel = clCreateKernel(program, "ray_cl", &status);
-		check_cl(status, "create kernel");
-	}
-#endif
+    init_cl();
 
     double last_xpos = 0, last_ypos = 0;
 	/* Loop until the user closes the window */
@@ -197,16 +200,12 @@ int main(int argc, char* argv[])
 		glfwPollEvents();
 	}
 
-#if TRACER_CL
 	if (num_platforms > 0) {
 		clReleaseMemObject(mainOctCL);
 		clReleaseMemObject(image);
-		clReleaseProgram(program);
 		clReleaseKernel(kernel);
 		clReleaseCommandQueue(queue);
-		clReleaseContext(context);
 	}
-#endif
 	glfwDestroyWindow(window);
 
 	glfwTerminate();
@@ -259,11 +258,9 @@ static void key_callback(GLFWwindow* window, int key, int scancode, int action, 
 				if (render_method == Stacking) {
 					render_method = Stackless;
 					printf("Stackless");
-#if TRACER_CL
                 } else if (render_method == Stackless && num_platforms > 0) {
                     render_method = TracerCL;
                     printf("TracerCL");
-#endif
                 } else {
 					render_method = Stacking;
 					printf("Stacking");

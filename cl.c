@@ -20,7 +20,6 @@
 
 #include "globals.h"
 
-#if TRACER_CL
 cl_context_properties *getContextProperties(cl_platform_id platform_id) {
     static cl_context_properties props[] = {
         CL_CONTEXT_PLATFORM,
@@ -39,4 +38,3 @@ cl_context_properties *getContextProperties(cl_platform_id platform_id) {
 #endif
     return props;
 }
-#endif

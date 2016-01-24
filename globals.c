@@ -11,18 +11,16 @@ float vertical_angle = 0.0;
 
 RenderMethod render_method = Stacking;
 
-OctTreeNode * mainOctTree;
+OctTreeNode *mainOctTree;
 int octTreeLength = 0;
 
 GLuint texture;
-GLFWwindow* window;
+GLFWwindow *window;
 const int height = 1024;
 const int width = 1024;
 
-#if TRACER_CL
 cl_command_queue queue;
 cl_kernel kernel;
 cl_mem mainOctCL;
 cl_mem image;
 cl_uint num_platforms;
-#endif
