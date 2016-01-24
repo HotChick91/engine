@@ -7,15 +7,21 @@ cabal-version:   >= 1.8
 build-type:      Simple
 description: New approach to gameengining
 
+flag debug
+  description: compile C with -g and -O0
+  default: False
+
+flag cl
+  description: compile with OpenCL support
+  default: True
+
 executable engine
   main-is:  engine.c
-  includes: types.h
   c-sources: cl.c error.c geom.c globals.c render.c
-  cc-options:-g -std=c11 -Wall -DTRACER_CL=0
-  include-dirs: /usr/lib/ghc-7.10.3/include/
-  extra-libraries: glfw GL m
   Other-Modules: FileLoader
-
+  extra-libraries: m GL glfw
+  if flag(cl)
+    extra-libraries: OpenCL
 
   build-depends:
       aeson >= 0.10.0.0,
@@ -25,6 +31,12 @@ executable engine
       vector >= 0.11.0,
       scientific >= 0.3.4
 
-  ghc-options: -no-hs-main -O2 -Wall
-  -- -dynamic
+  ghc-options: -no-hs-main -Wall -O2
 
+  cc-options: -std=c11 -Wall
+  if flag(debug)
+    cc-options: -g
+  else
+    cc-options: -O2
+  if !flag(cl)
+    cc-options: -DTRACER_CL=0

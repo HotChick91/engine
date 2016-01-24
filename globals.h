@@ -27,4 +27,5 @@ extern cl_command_queue queue;
 extern cl_kernel kernel;
 extern cl_mem mainOctCL;
 extern cl_mem image;
+extern cl_uint num_platforms;
 #endif

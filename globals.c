@@ -24,4 +24,5 @@ cl_command_queue queue;
 cl_kernel kernel;
 cl_mem mainOctCL;
 cl_mem image;
+cl_uint num_platforms;
 #endif

@@ -13,15 +13,10 @@
 
 // TODO zrobić na to odpowiedni plik
 #include "HsFFI.h"
-
-#ifdef __GLASGOW_HASKELL__
 #include "FileLoader_stub.h"
-#endif
-
-#pragma once
 
 void load_file(HsPtr name);
-void push_oct_tree_empty();
+void push_oct_tree_empty(void);
 void push_oct_tree_solid(float r, float g, float b);
 void push_oct_tree_partial(int c0, int c1, int c2, int c3, int c4, int c5, int c6, int c7);
 
@@ -69,110 +64,101 @@ int main(int argc, char* argv[])
     // i mean gpu
     cl_int status;
     cl_platform_id platform_id;
-    cl_int num_platforms;
+    cl_context context;
+    cl_program program;
+
     char *kernel_src = malloc(10240);
     check_nn(kernel_src, "kernel_src");
+
     status = clGetPlatformIDs(1, &platform_id, &num_platforms);
-    check_cl(status, "get platform ids");
+    if (status == CL_PLATFORM_NOT_FOUND_KHR) {
+		num_platforms = 0;
+		fprintf(stderr, "WARNING: platform not found\n");
+	} else {
+		check_cl(status, "get platform ids");
+	}
 
-    printf("#platforms: %d\n", num_platforms);
-    cl_context_properties *props = getContextProperties(platform_id);
+    printf("#platforms: %u\n", num_platforms);
 
-    char info[4][128];
-    status = clGetPlatformInfo(platform_id, CL_PLATFORM_PROFILE, 128, info[0], NULL);
-    check_cl(status, "get platform profile");
-    status = clGetPlatformInfo(platform_id, CL_PLATFORM_VERSION, 128, info[1], NULL);
-    check_cl(status, "get platform version");
-    status = clGetPlatformInfo(platform_id, CL_PLATFORM_NAME, 128, info[2], NULL);
-    check_cl(status, "get platform name");
-    status = clGetPlatformInfo(platform_id, CL_PLATFORM_VENDOR, 128, info[3], NULL);
-    check_cl(status, "get platform vendor");
+    if (num_platforms > 0) {
+		char info[4][128];
+		status = clGetPlatformInfo(platform_id, CL_PLATFORM_PROFILE, 128, info[0], NULL);
+		check_cl(status, "get platform profile");
+		status = clGetPlatformInfo(platform_id, CL_PLATFORM_VERSION, 128, info[1], NULL);
+		check_cl(status, "get platform version");
+		status = clGetPlatformInfo(platform_id, CL_PLATFORM_NAME, 128, info[2], NULL);
+		check_cl(status, "get platform name");
+		status = clGetPlatformInfo(platform_id, CL_PLATFORM_VENDOR, 128, info[3], NULL);
+		check_cl(status, "get platform vendor");
 
-    printf("profile: %s\n", info[0]);
-    printf("version: %s\n", info[1]);
-    printf("name: %s\n", info[2]);
-    printf("vendor: %s\n", info[3]);
+		printf("profile: %s\n", info[0]);
+		printf("version: %s\n", info[1]);
+		printf("name: %s\n", info[2]);
+		printf("vendor: %s\n", info[3]);
 
-    cl_context context = clCreateContextFromType(props, CL_DEVICE_TYPE_GPU, NULL, NULL, &status);
-    check_cl(status, "create context");
+		cl_context_properties *props = getContextProperties(platform_id);
+		context = clCreateContextFromType(props, CL_DEVICE_TYPE_GPU, NULL, NULL, &status);
+		check_cl(status, "create context");
 
-    // create a command queue
-    cl_device_id device_id;
-    status = clGetDeviceIDs(platform_id, CL_DEVICE_TYPE_GPU, 1, &device_id, NULL);
-    check_cl(status, "get device ids");
-#ifdef CL_VERSION_2_0
-    queue = clCreateCommandQueueWithProperties(context, device_id, NULL, &status);
-#else
-    queue = clCreateCommandQueue(context, device_id, 0, &status);
+		// create a command queue
+		cl_device_id device_id;
+		status = clGetDeviceIDs(platform_id, CL_DEVICE_TYPE_GPU, 1, &device_id, NULL);
+		check_cl(status, "get device ids");
+
+		queue = clCreateCommandQueue(context, device_id, 0, &status);
+		check_cl(status, "create command queue");
+
+		// allocate memory objects
+		mainOctCL = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, 9*sizeof(OctTreeNode), mainOctTree, &status);
+		check_cl(status, "create buffer");
+
+		glGenTextures(1, &texture);
+		glBindTexture(GL_TEXTURE_2D, texture);
+
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_FLOAT, NULL);
+		glFinish();
+
+		image = clCreateFromGLTexture(context, CL_MEM_WRITE_ONLY, GL_TEXTURE_2D, 0, texture, &status);
+		check_cl(status, "create image");
+
+		// create the compute program
+		FILE *kernel_handle = fopen("ray.cl", "rb");
+		check_nn(kernel_handle, "fopen ray.cl");
+
+		size_t n_bytes = fread(kernel_src, 1, 10239, kernel_handle);
+		kernel_src[n_bytes] = '\0';
+		check_ferror(kernel_handle, "fread");
+
+		program = clCreateProgramWithSource(context, 1, (const char **)&kernel_src, NULL, &status);
+		check_cl(status, "create program");
+
+		// build the compute program executable
+		status = clBuildProgram(program, 0, NULL, NULL, NULL, NULL);
+		if (status != CL_BUILD_PROGRAM_FAILURE && status != CL_SUCCESS) {
+			check_cl(status, "build program");
+		} else {
+			size_t log_size;
+			status = clGetProgramBuildInfo(program, device_id, CL_PROGRAM_BUILD_LOG, 0, NULL, &log_size);
+			check_cl(status, "get program build log size");
+
+			char *log = malloc(log_size);
+			check_nn(log, "log");
+
+			status = clGetProgramBuildInfo(program, device_id, CL_PROGRAM_BUILD_LOG, log_size, log, NULL);
+			check_cl(status, "get program build log");
+
+			fprintf(stderr, "build kernel log:\n%s\n", log);
+		}
+
+		// create the compute kernel
+		kernel = clCreateKernel(program, "ray_cl", &status);
+		check_cl(status, "create kernel");
+	}
 #endif
-    check_cl(status, "create command queue");
 
-    // allocate memory objects
-    mainOctCL = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, 9*sizeof(OctTreeNode), mainOctTree, &status);
-    check_cl(status, "create buffer");
-
-    cl_image_format fmt = { CL_RGBA, CL_FLOAT };
-    cl_image_desc desc;
-    desc.image_type = CL_MEM_OBJECT_IMAGE2D;
-    desc.image_width = width;
-    desc.image_height = height;
-    desc.image_row_pitch = 0;
-    desc.image_slice_pitch = 0;
-    desc.num_mip_levels = 0;
-    desc.num_samples = 0;
-#ifdef CL_VERSION_2_0
-    desc.mem_object = NULL;
-#else
-    desc.buffer = NULL;
-#endif
-
-    glGenTextures(1, &texture);
-    glBindTexture(GL_TEXTURE_2D, texture);
-
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_FLOAT, NULL);
-    glFinish();
-
-    image = clCreateFromGLTexture(context, CL_MEM_WRITE_ONLY, GL_TEXTURE_2D, 0, texture, &status);
-    check_cl(status, "create image");
-
-    // create the compute program
-    FILE *kernel_handle;
-    fopen_s(&kernel_handle, "ray.cl", "rb");
-    check_nn(kernel_handle, "fopen ray.cl");
-
-    size_t n_bytes = fread(kernel_src, 1, 10239, kernel_handle);
-    kernel_src[n_bytes] = '\0';
-    check_ferror(kernel_handle, "fread");
-
-    cl_program program = clCreateProgramWithSource(context, 1, &kernel_src, NULL, &status);
-    check_cl(status, "create program");
-
-    // build the compute program executable
-    status = clBuildProgram(program, 0, NULL, NULL, NULL, NULL);
-    if (status != CL_BUILD_PROGRAM_FAILURE && status != CL_SUCCESS) {
-        check_cl(status, "build program");
-    } else {
-        size_t log_size;
-        status = clGetProgramBuildInfo(program, device_id, CL_PROGRAM_BUILD_LOG, 0, NULL, &log_size);
-        check_cl(status, "get program build log size");
-
-        char *log = malloc(log_size);
-        check_nn(log, "log");
-
-        status = clGetProgramBuildInfo(program, device_id, CL_PROGRAM_BUILD_LOG, log_size, log, NULL);
-        check_cl(status, "get program build log");
-
-        fprintf(stderr, "build kernel log:\n%s\n", log);
-    }
-
-    // create the compute kernel
-    kernel = clCreateKernel(program, "ray_cl", &status);
-    check_cl(status, "create kernel");
-
-#endif
     double last_xpos = 0, last_ypos = 0;
 	/* Loop until the user closes the window */
 	while (!glfwWindowShouldClose(window))
@@ -212,12 +198,14 @@ int main(int argc, char* argv[])
 	}
 
 #if TRACER_CL
-    clReleaseMemObject(mainOctCL);
-    clReleaseMemObject(image);
-    clReleaseProgram(program);
-    clReleaseKernel(kernel);
-    clReleaseCommandQueue(queue);
-    clReleaseContext(context);
+	if (num_platforms > 0) {
+		clReleaseMemObject(mainOctCL);
+		clReleaseMemObject(image);
+		clReleaseProgram(program);
+		clReleaseKernel(kernel);
+		clReleaseCommandQueue(queue);
+		clReleaseContext(context);
+	}
 #endif
 	glfwDestroyWindow(window);
 
@@ -272,7 +260,7 @@ static void key_callback(GLFWwindow* window, int key, int scancode, int action, 
 					render_method = Stackless;
 					printf("Stackless");
 #if TRACER_CL
-                } else if (render_method == Stackless) {
+                } else if (render_method == Stackless && num_platforms > 0) {
                     render_method = TracerCL;
                     printf("TracerCL");
 #endif
@@ -350,7 +338,7 @@ void push_oct_tree_solid(float r, float g, float b)
 	octTreeLength++;
 }
 
-void push_oct_tree_empty()
+void push_oct_tree_empty(void)
 {
 	printf("Pushing empty\n");
 	mainOctTree[octTreeLength].type = Empty;
@@ -365,8 +353,7 @@ static void initOctTree(void)
 
 	load_file("model.json");
 
-	/*mainOctTree[0].parent = -1;*/
-    mainOctTree->parent = -1;
+	mainOctTree[0].parent = -1;
 	printf("Done loading.\n");
 
 }

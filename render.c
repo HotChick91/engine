@@ -239,8 +239,6 @@ void captureOctTree(Point3f camera, Point3f target, Point3f up, int width, int h
         status = clEnqueueNDRangeKernel(queue, kernel, 2, NULL, global_work_size, local_work_size, 0, NULL, NULL);
         check_cl(status, "enqueue kernel");
 
-        size_t offset[] = {0, 0, 0};
-        size_t dims[] = {width, height, 1};
         status = clEnqueueReleaseGLObjects(queue, 1, &image, 0, NULL, NULL);
         check_cl(status, "release gl");
 

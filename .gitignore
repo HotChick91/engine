@@ -1,7 +1,6 @@
 /engine
-dist/
-.cabal-sandbox/
-cabal.sandbox.config
-file_loader_stub.h
+/dist/
+/.cabal-sandbox/
+/cabal.sandbox.config
 *.o
 *.hi
