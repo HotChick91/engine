@@ -69,13 +69,13 @@ kernel void ray_cl(float3 origin, float3 light, float3 bottom_left_vec, float3 d
             dz = direction.z > 0 ? 1 : -1;
         }
         new_relative = relative + direction * mindist;
+        origin = new_relative + center;
 
         while (tree->parent != -1) {
             int nx = tree->x + dx;
             int ny = tree->y + dy;
             int nz = tree->z + dz;
             if (((nx | ny | nz) & (~1)) == 0) {
-                origin = new_relative + center;
                 tree = trees + trees[tree->parent].nodes[nx][ny][nz];
                 // radius stays the same
                 center = (float3)( center.x + (2 * dx) * radius,

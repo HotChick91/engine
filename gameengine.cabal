@@ -15,15 +15,22 @@ executable engine
   main-is:  engine.c
   c-sources: cl.c error.c geom.c globals.c render.c
   Other-Modules: FileLoader
-  extra-libraries: m GL glfw OpenCL
+  extra-libraries: m OpenCL
+  if os(windows)
+    extra-libraries: opengl32 glfw3
+    -- TODO: find a better way to do this
+    --extra-lib-dirs: "path to opencl library dir" "path to glfw lib-mingw-w64 dir"
+    --include-dirs: "path to opencl include dir" "path to glfw include dir"
+  else
+    extra-libraries: GL glfw
 
   build-depends:
-      aeson >= 0.10.0.0,
+      aeson >= 0.10,
       base >= 4.5 && < 4.9,
-      bytestring >= 0.10.6,
-      unordered-containers >= 0.2.6,
-      vector >= 0.11.0,
-      scientific >= 0.3.4
+      bytestring >= 0.10,
+      unordered-containers >= 0.2,
+      vector >= 0.11,
+      scientific >= 0.3
 
   ghc-options: -no-hs-main -Wall -O2
 

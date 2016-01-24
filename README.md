@@ -1,12 +1,16 @@
 # Engine
 
+## Setup
+
 Requires GLFW 3.
 
-OpenCL is required (1.2 and 2.0 are supported).
+An OpenCL library is required (1.2 and 2.0 are supported).
 When running with OpenCL support enabled, make sure that `ray.cl` is in the working directory.
 
-To get this working in Visual Studio, add:
+To get this working:
 
-* GLFW and OpenCL include directories to Configuration Properties -> C/C++ -> General -> Additional Include Directories
-* GLFW and OpenCL library directories to Configuration Properties -> Linker -> General -> Additional Library Directories
-* glfw3.lib, opengl32.lib, and OpenCL.lib to Configuration Properties -> Linker -> Input -> Additional Dependencies
+* install GLFW and OpenCL (`ocl-icd-opencl-dev` is fine if you don't want hardware rendering)
+* if running Windows, add paths to these libraries to `gameengine.cabal`
+* install stack, run `stack setup`
+* run `stack init` in the directory containing `gameengine.cabal`
+* finally, run `stack install` to compile

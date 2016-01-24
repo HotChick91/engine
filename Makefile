@@ -1,10 +1,9 @@
-ALL: engine
+all: engine
 
 engine:
-	cabal configure --bindir=.
-	cabal build
-	cabal copy
+	stack install
 
 clean:
-	cabal clean
-	rm -f engine
+	stack clean
+
+.PHONY: clean all

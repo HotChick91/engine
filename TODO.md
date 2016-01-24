@@ -1,8 +1,6 @@
 # TODO
 
-* get this to compile in VS
-* update README.md
-* investigate stackless-stacking divergence
+* find a better way of specifying dependency paths on Windows
 * make CL work on Linux
 * commentate code
 * change author field in cabal (wtf)

@@ -13,7 +13,6 @@
 
 // TODO zrobić na to odpowiedni plik
 #include "HsFFI.h"
-#include "FileLoader_stub.h"
 
 void load_file(HsPtr name);
 void push_oct_tree_empty(void);
@@ -69,7 +68,7 @@ static void init_cl(void)
 	SOFT_CHECK_CL(status, "create command queue");
 
 	// allocate memory objects
-	mainOctCL = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, 9*sizeof(OctTreeNode), mainOctTree, &status);
+	mainOctCL = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, octTreeLength*sizeof(OctTreeNode), mainOctTree, &status);
 	SOFT_CHECK_CL(status, "create buffer");
 
 	glGenTextures(1, &texture);
@@ -156,7 +155,7 @@ int main(int argc, char* argv[])
 							  , sinf(vertical_angle)};
 	float * piksele = malloc(height*width*3*sizeof(*piksele));
 
-    printf("sizeof(OctTreeNode)=%zd\n", sizeof(OctTreeNode));
+    printf("sizeof(OctTreeNode)=%d\n", (int)sizeof(OctTreeNode));
 
 	//****************************
 
