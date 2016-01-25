@@ -1,6 +1,7 @@
 #include "error.h"
 
 #include <stdlib.h>
+#include <GL/gl.h>
 
 #include "cl.h"
 
@@ -23,6 +24,12 @@ void check_ferror(FILE *stream, char *msg) {
 void check_cl(cl_int status, char *msg) {
     if (status != CL_SUCCESS)
         die(msg, "opencl error", status);
+}
+
+void check_gl(void) {
+    int err = glGetError();
+    if (err != GL_NO_ERROR)
+        die("gl error", "gl error", err);
 }
 
 void error_callback(int error, const char* description)

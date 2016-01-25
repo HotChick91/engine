@@ -14,3 +14,19 @@ To get this working:
 * install stack, run `stack setup`
 * run `stack init` in the directory containing `gameengine.cabal`
 * finally, run `stack install` to compile
+
+## Troubleshooting
+
+* 
+
+        Warning: 'extra-lib-dirs: "C:\Program\' directory does not exist.
+
+ Solution: escape your backslashes (`"C:\\Program Files\\..."`)
+
+* 
+
+        X Error of failed request:  BadMatch (invalid parameter attributes)
+        Major opcode of failed request:  156 (GLX)
+        Minor opcode of failed request:  5 (X_GLXMakeCurrent)
+
+ Solution: add `/usr/lib/fglrx` to `LD_LIBRARY_PATH`

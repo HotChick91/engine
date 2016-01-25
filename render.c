@@ -2,6 +2,7 @@
 
 #include <math.h>
 #include <stdlib.h>
+#include <GL/gl.h>
 
 #include "cl.h"
 #include "error.h"

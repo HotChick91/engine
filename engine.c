@@ -72,13 +72,19 @@ static void init_cl(void)
 	SOFT_CHECK_CL(status, "create buffer");
 
 	glGenTextures(1, &texture);
+    check_gl();
 	glBindTexture(GL_TEXTURE_2D, texture);
+    check_gl();
 
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    check_gl();
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    check_gl();
 
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_FLOAT, NULL);
+    check_gl();
 	glFinish();
+    check_gl();
 
 	image = clCreateFromGLTexture(context, CL_MEM_WRITE_ONLY, GL_TEXTURE_2D, 0, texture, &status);
 	SOFT_CHECK_CL(status, "create image");
@@ -121,6 +127,9 @@ static void init_cl(void)
 
 	status = clReleaseContext(context);
 	SOFT_CHECK_CL(status, "release context");
+
+    fprintf(stderr, "OpenCL initialization successful\n");
+    render_method = TracerCL;
 }
 
 int main(int argc, char* argv[])
