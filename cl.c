@@ -2,7 +2,9 @@
 
 // this provides a nice _WIN32 definition
 #include <GLFW/glfw3.h>
+#if _WIN32
 #include <Windows.h>
+#endif
 
 // TODO: add support for EGL
 
