@@ -290,48 +290,19 @@ static void key_callback(GLFWwindow* window, int key, int scancode, int action, 
 void push_oct_tree_partial(int c0, int c1, int c2, int c3, int c4, int c5, int c6, int c7)
 {
     printf("Pushing partial %d %d %d %d %d %d %d %d\n", c0, c1, c2, c3, c4, c5, c6, c7 );
-    mainOctTree[octTreeLength].type = Partial;
-    mainOctTree[octTreeLength].nodes[0][1][1] = c0;
-    mainOctTree[c0].parent = octTreeLength;
-    mainOctTree[c0].x = 0;
-    mainOctTree[c0].y = 1;
-    mainOctTree[c0].z = 1;
-    mainOctTree[octTreeLength].nodes[1][1][1] = c1;
-    mainOctTree[c1].parent = octTreeLength;
-    mainOctTree[c1].x = 1;
-    mainOctTree[c1].y = 1;
-    mainOctTree[c1].z = 1;
-    mainOctTree[octTreeLength].nodes[0][0][1] = c2;
-    mainOctTree[c2].parent = octTreeLength;
-    mainOctTree[c2].x = 0;
-    mainOctTree[c2].y = 0;
-    mainOctTree[c2].z = 1;
-    mainOctTree[octTreeLength].nodes[1][0][1] = c3;
-    mainOctTree[c3].parent = octTreeLength;
-    mainOctTree[c3].x = 1;
-    mainOctTree[c3].y = 0;
-    mainOctTree[c3].z = 1;
-    mainOctTree[octTreeLength].nodes[0][1][0] = c4;
-    mainOctTree[c4].parent = octTreeLength;
-    mainOctTree[c4].x = 0;
-    mainOctTree[c4].y = 1;
-    mainOctTree[c4].z = 0;
-    mainOctTree[octTreeLength].nodes[1][1][0] = c5;
-    mainOctTree[c5].parent = octTreeLength;
-    mainOctTree[c5].x = 1;
-    mainOctTree[c5].y = 1;
-    mainOctTree[c5].z = 0;
-    mainOctTree[octTreeLength].nodes[0][0][0] = c6;
-    mainOctTree[c6].parent = octTreeLength;
-    mainOctTree[c6].x = 0;
-    mainOctTree[c6].y = 0;
-    mainOctTree[c6].z = 0;
-    mainOctTree[octTreeLength].nodes[1][0][0] = c7;
-    mainOctTree[c7].parent = octTreeLength;
-    mainOctTree[c7].x = 1;
-    mainOctTree[c7].y = 0;
-    mainOctTree[c7].z = 0;
+    int child_arr[8] = {c0, c1, c2, c3, c4, c5, c6, c7};
 
+    mainOctTree[octTreeLength].type = Partial;
+    for (int i = 0; i < 8; i++) {
+        int x = (i / 4) % 2;
+        int y = (i / 2) % 2;
+        int z = i % 2;
+        mainOctTree[octTreeLength].nodes[x][y][z] = child_arr[i];
+        mainOctTree[child_arr[i]].parent = octTreeLength;
+        mainOctTree[child_arr[i]].x = x;
+        mainOctTree[child_arr[i]].y = y;
+        mainOctTree[child_arr[i]].z = z;
+    }
     octTreeLength++;
 }
 
