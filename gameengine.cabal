@@ -18,9 +18,6 @@ executable engine
   extra-libraries: m OpenCL
   if os(windows)
     extra-libraries: opengl32 glfw3
-    -- TODO: find a better way to do this
-    --extra-lib-dirs: "path to opencl library dir" "path to glfw lib-mingw-w64 dir"
-    --include-dirs: "path to opencl include dir" "path to glfw include dir"
   else
     extra-libraries: GL glfw
 
