@@ -20,12 +20,6 @@ You can confirm that all variables are set correctly by running `stack exec env`
 
 * 
 
-        Warning: 'extra-lib-dirs: "C:\Program\' directory does not exist.
-
- Solution: escape your backslashes (`"C:\\Program Files\\..."`)
-
-* 
-
         X Error of failed request:  BadMatch (invalid parameter attributes)
         Major opcode of failed request:  156 (GLX)
         Minor opcode of failed request:  5 (X_GLXMakeCurrent)
