@@ -1,11 +1,9 @@
-CC = gcc
-CFLAGS = -lOpenCL -lglfw -lGL -lm -g -std=c11 -Wall
+all: engine
 
-ALL: engine
-
-engine: cl.o engine.o error.o geom.o globals.o render.o
-	gcc -o $@ $^ $(CFLAGS)
+engine:
+	stack install
 
 clean:
-	rm -f engine *.o
+	stack clean
 
+.PHONY: clean all

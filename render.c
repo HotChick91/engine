@@ -2,6 +2,7 @@
 
 #include <math.h>
 #include <stdlib.h>
+#include <GL/gl.h>
 
 #include "cl.h"
 #include "error.h"
@@ -122,7 +123,7 @@ static int ray_cast_oct_tree_stacking(Point3f origin, Point3f direction, OctTree
 static void ray_cast_oct_tree_stackless(Point3f origin, Point3f direction, OctTreeNode * tree, Color4f * color)
 {
     Point3f local, new_local;
-    float xdist, ydist, zdist;
+    float xdist, ydist, zdist, mindist;
     int dx, dy, dz;
 
     Point3f center = (Point3f) { 0, 0, 0 };
@@ -162,20 +163,21 @@ next_ray:
     zdist = MAX((radius - local.z) / direction.z, (-radius - local.z) / direction.z);
     dx = 0, dy = 0, dz = 0;
     if (xdist < ydist && xdist < zdist) {
-        new_local = vectMulScalar(local, direction, xdist);
+        mindist = xdist;
         dx = direction.x > 0 ? 1 : -1;
     } else if (ydist < zdist) {
-        new_local = vectMulScalar(local, direction, ydist);
+        mindist = ydist;
         dy = direction.y > 0 ? 1 : -1;
     } else {
-        new_local = vectMulScalar(local, direction, zdist);
+        mindist = zdist;
         dz = direction.z > 0 ? 1 : -1;
     }
+    new_local = vectMulScalar(local, direction, mindist);
+    origin = vectMulScalar(new_local, center, 1);
 
     while (tree->parent != -1) {
         OctTreeNode *sibling = maybeSibling(tree, dx, dy, dz);
         if (sibling != NULL) {
-            origin = vectMulScalar(new_local, center, 1);
             tree = sibling;
 
             // radius stays the same
@@ -210,7 +212,6 @@ void captureOctTree(Point3f camera, Point3f target, Point3f up, int width, int h
     Point3f dright = vectDiv(right, (float)width);
     Point3f dup = vectDiv(up, (float)height);
 
-#if TRACER_CL
     if (render_method == TracerCL) {
         // set the args values
         cl_int status;
@@ -239,8 +240,6 @@ void captureOctTree(Point3f camera, Point3f target, Point3f up, int width, int h
         status = clEnqueueNDRangeKernel(queue, kernel, 2, NULL, global_work_size, local_work_size, 0, NULL, NULL);
         check_cl(status, "enqueue kernel");
 
-        size_t offset[] = {0, 0, 0};
-        size_t dims[] = {width, height, 1};
         status = clEnqueueReleaseGLObjects(queue, 1, &image, 0, NULL, NULL);
         check_cl(status, "release gl");
 
@@ -265,7 +264,6 @@ void captureOctTree(Point3f camera, Point3f target, Point3f up, int width, int h
         glDisable(GL_TEXTURE_2D);
         glFinish();
     } else {
-#endif
         for (int y = 0; y < height; y++) for (int x = 0; x < width; x++)
         {
             Color4f color = {0.,0.,0.};
@@ -281,7 +279,5 @@ void captureOctTree(Point3f camera, Point3f target, Point3f up, int width, int h
         }
 
         glDrawPixels(width, height, GL_RGB, GL_FLOAT, data);
-#if TRACER_CL
     }
-#endif
 }

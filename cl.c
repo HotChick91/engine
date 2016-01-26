@@ -6,24 +6,15 @@
 #include <Windows.h>
 #endif
 
-// TODO: add support for EGL
-
-#if defined(_WIN32)
-#define GLFW_EXPOSE_NATIVE_WIN32 1
-#define GLFW_EXPOSE_NATIVE_WGL 1
-#elif defined(__APPLE__)
-#define GLFW_EXPOSE_NATIVE_COCOA 1
-#define GLFW_EXPOSE_NATIVE_NSGL 1
+// TODO: add support for OS X, EGL
+#ifdef _WIN32
+#include <Windows.h>
 #else
-#define GLFW_EXPOSE_NATIVE_X11 1
-#define GLFW_EXPOSE_NATIVE_GLX 1
+#include <GL/glx.h>
 #endif
-
-#include <GLFW/glfw3native.h>
 
 #include "globals.h"
 
-#if TRACER_CL
 cl_context_properties *getContextProperties(cl_platform_id platform_id) {
     static cl_context_properties props[] = {
         CL_CONTEXT_PLATFORM,
@@ -33,16 +24,18 @@ cl_context_properties *getContextProperties(cl_platform_id platform_id) {
         CL_WGL_HDC_KHR,
         0,
         0,
+        0,
+        0,
     };
     props[1] = (cl_context_properties)platform_id;
 #if _WIN32
-    props[3] = (cl_context_properties)glfwGetWGLContext(window);
-    props[5] =  (cl_context_properties)wglGetCurrentDC();
-#elif __APPLE__
-    props[3] = (cl_context_properties)glfwGetNSGLContext(window);
+    props[3] = (cl_context_properties)wglGetCurrentContext();
+    props[4] = CL_WGL_HDC_KHR;
+    props[5] = (cl_context_properties)wglGetCurrentDC();
 #else
-    props[3] = (cl_context_properties)glfwGetGLXContext(window);
+    props[3] = (cl_context_properties)glXGetCurrentContext();
+    props[4] = CL_GLX_DISPLAY_KHR;
+    props[5] = (cl_context_properties)glXGetCurrentDisplay();
 #endif
     return props;
 }
-#endif

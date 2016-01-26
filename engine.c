@@ -11,10 +11,128 @@
 #include "render.h"
 #include "types.h"
 
+// TODO create proper file for haskell stuff
+#include "HsFFI.h"
+
+void load_file(HsPtr name);
+void push_oct_tree_empty(void);
+void push_oct_tree_solid(float r, float g, float b);
+void push_oct_tree_partial(int c0, int c1, int c2, int c3, int c4, int c5, int c6, int c7);
+
 static void key_callback(GLFWwindow* windows, int key, int scancode, int action, int mods);
 static void initOctTree(void);
 
-int main(void)
+#define SOFT_CHECK_CL(status, msg) do {if (status != CL_SUCCESS) {num_platforms = 0; fprintf(stderr, "WARNING: %s (%d)\n", msg, status); return;}} while (0)
+static void init_cl(void)
+{
+    cl_int status;
+    cl_platform_id platform_id;
+    cl_context context;
+    cl_program program;
+
+    char *kernel_src = malloc(10240);
+    check_nn(kernel_src, "kernel_src");
+
+    status = clGetPlatformIDs(1, &platform_id, &num_platforms);
+    SOFT_CHECK_CL(status, "get platform ids");
+
+    printf("#platforms: %u\n", num_platforms);
+    if (num_platforms == 0)
+        return;
+
+    char info[4][128];
+    status = clGetPlatformInfo(platform_id, CL_PLATFORM_PROFILE, 128, info[0], NULL);
+    SOFT_CHECK_CL(status, "get platform profile");
+    status = clGetPlatformInfo(platform_id, CL_PLATFORM_VERSION, 128, info[1], NULL);
+    SOFT_CHECK_CL(status, "get platform version");
+    status = clGetPlatformInfo(platform_id, CL_PLATFORM_NAME, 128, info[2], NULL);
+    SOFT_CHECK_CL(status, "get platform name");
+    status = clGetPlatformInfo(platform_id, CL_PLATFORM_VENDOR, 128, info[3], NULL);
+    SOFT_CHECK_CL(status, "get platform vendor");
+
+    printf("profile: %s\n", info[0]);
+    printf("version: %s\n", info[1]);
+    printf("name: %s\n", info[2]);
+    printf("vendor: %s\n", info[3]);
+
+    cl_context_properties *props = getContextProperties(platform_id);
+    context = clCreateContextFromType(props, CL_DEVICE_TYPE_GPU, NULL, NULL, &status);
+    SOFT_CHECK_CL(status, "create context");
+
+    // create a command queue
+    cl_device_id device_id;
+    status = clGetDeviceIDs(platform_id, CL_DEVICE_TYPE_GPU, 1, &device_id, NULL);
+    SOFT_CHECK_CL(status, "get device ids");
+
+    queue = clCreateCommandQueue(context, device_id, 0, &status);
+    SOFT_CHECK_CL(status, "create command queue");
+
+    // allocate memory objects
+    mainOctCL = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, octTreeLength*sizeof(OctTreeNode), mainOctTree, &status);
+    SOFT_CHECK_CL(status, "create buffer");
+
+    glGenTextures(1, &texture);
+    check_gl();
+    glBindTexture(GL_TEXTURE_2D, texture);
+    check_gl();
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    check_gl();
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    check_gl();
+
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_FLOAT, NULL);
+    check_gl();
+    glFinish();
+    check_gl();
+
+    image = clCreateFromGLTexture(context, CL_MEM_WRITE_ONLY, GL_TEXTURE_2D, 0, texture, &status);
+    SOFT_CHECK_CL(status, "create image");
+
+    // create the compute program
+    FILE *kernel_handle = fopen("ray.cl", "rb");
+    check_nn(kernel_handle, "fopen ray.cl");
+
+    size_t n_bytes = fread(kernel_src, 1, 10239, kernel_handle);
+    kernel_src[n_bytes] = '\0';
+    check_ferror(kernel_handle, "fread");
+
+    program = clCreateProgramWithSource(context, 1, (const char **)&kernel_src, NULL, &status);
+    SOFT_CHECK_CL(status, "create program");
+
+    // build the compute program executable
+    status = clBuildProgram(program, 0, NULL, NULL, NULL, NULL);
+    if (status != CL_BUILD_PROGRAM_FAILURE && status != CL_SUCCESS) {
+        SOFT_CHECK_CL(status, "build program");
+    } else {
+        size_t log_size;
+        status = clGetProgramBuildInfo(program, device_id, CL_PROGRAM_BUILD_LOG, 0, NULL, &log_size);
+        SOFT_CHECK_CL(status, "get program build log size");
+
+        char *log = malloc(log_size);
+        check_nn(log, "log");
+
+        status = clGetProgramBuildInfo(program, device_id, CL_PROGRAM_BUILD_LOG, log_size, log, NULL);
+        SOFT_CHECK_CL(status, "get program build log");
+
+        fprintf(stderr, "build kernel log:\n%s\n", log);
+    }
+
+    // create the compute kernel
+    kernel = clCreateKernel(program, "ray_cl", &status);
+    SOFT_CHECK_CL(status, "create kernel");
+
+    status = clReleaseProgram(program);
+    SOFT_CHECK_CL(status, "release program");
+
+    status = clReleaseContext(context);
+    SOFT_CHECK_CL(status, "release context");
+
+    fprintf(stderr, "OpenCL initialization successful\n");
+    render_method = TracerCL;
+}
+
+int main(int argc, char* argv[])
 {
     glfwSetErrorCallback(error_callback);
 
@@ -38,125 +156,20 @@ int main(void)
     glfwSetKeyCallback(window, key_callback);
 
     //**************************** generowanie przykładowych piksli
+    hs_init(&argc, &argv);
     initOctTree();
+    hs_exit();
     camera_target = (Point3f) { cosf(horizontal_angle) * cosf(vertical_angle)
-                              , sinf(horizontal_angle) * cosf(vertical_angle)
-                              , sinf(vertical_angle)};
+        , sinf(horizontal_angle) * cosf(vertical_angle)
+            , sinf(vertical_angle)};
     float * piksele = malloc(height*width*3*sizeof(*piksele));
 
-    printf("sizeof(OctTreeNode)=%zd\n", sizeof(OctTreeNode));
+    printf("sizeof(OctTreeNode)=%d\n", (int)sizeof(OctTreeNode));
 
     //****************************
 
-#if TRACER_CL
-    // prepare your anus
-    // i mean gpu
-    cl_int status;
-    cl_platform_id platform_id;
-    cl_int num_platforms;
-    char *kernel_src = malloc(10240);
-    check_nn(kernel_src, "kernel_src");
-    status = clGetPlatformIDs(1, &platform_id, &num_platforms);
-    check_cl(status, "get platform ids");
+    init_cl();
 
-    printf("#platforms: %d\n", num_platforms);
-    cl_context_properties *props = getContextProperties(platform_id);
-
-    char info[4][128];
-    status = clGetPlatformInfo(platform_id, CL_PLATFORM_PROFILE, 128, info[0], NULL);
-    check_cl(status, "get platform profile");
-    status = clGetPlatformInfo(platform_id, CL_PLATFORM_VERSION, 128, info[1], NULL);
-    check_cl(status, "get platform version");
-    status = clGetPlatformInfo(platform_id, CL_PLATFORM_NAME, 128, info[2], NULL);
-    check_cl(status, "get platform name");
-    status = clGetPlatformInfo(platform_id, CL_PLATFORM_VENDOR, 128, info[3], NULL);
-    check_cl(status, "get platform vendor");
-
-    printf("profile: %s\n", info[0]);
-    printf("version: %s\n", info[1]);
-    printf("name: %s\n", info[2]);
-    printf("vendor: %s\n", info[3]);
-
-    cl_context context = clCreateContextFromType(props, CL_DEVICE_TYPE_GPU, NULL, NULL, &status);
-    check_cl(status, "create context");
-
-    // create a command queue
-    cl_device_id device_id;
-    status = clGetDeviceIDs(platform_id, CL_DEVICE_TYPE_GPU, 1, &device_id, NULL);
-    check_cl(status, "get device ids");
-#ifdef CL_VERSION_2_0
-    queue = clCreateCommandQueueWithProperties(context, device_id, NULL, &status);
-#else
-    queue = clCreateCommandQueue(context, device_id, 0, &status);
-#endif
-    check_cl(status, "create command queue");
-
-    // allocate memory objects
-    mainOctCL = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, 9*sizeof(OctTreeNode), mainOctTree, &status);
-    check_cl(status, "create buffer");
-
-    cl_image_format fmt = { CL_RGBA, CL_FLOAT };
-    cl_image_desc desc;
-    desc.image_type = CL_MEM_OBJECT_IMAGE2D;
-    desc.image_width = width;
-    desc.image_height = height;
-    desc.image_row_pitch = 0;
-    desc.image_slice_pitch = 0;
-    desc.num_mip_levels = 0;
-    desc.num_samples = 0;
-#ifdef CL_VERSION_2_0
-    desc.mem_object = NULL;
-#else
-    desc.buffer = NULL;
-#endif
-
-    glGenTextures(1, &texture);
-    glBindTexture(GL_TEXTURE_2D, texture);
-
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_FLOAT, NULL);
-    glFinish();
-
-    image = clCreateFromGLTexture(context, CL_MEM_WRITE_ONLY, GL_TEXTURE_2D, 0, texture, &status);
-    check_cl(status, "create image");
-
-    // create the compute program
-    FILE *kernel_handle;
-    fopen_s(&kernel_handle, "ray.cl", "rb");
-    check_nn(kernel_handle, "fopen ray.cl");
-
-    size_t n_bytes = fread(kernel_src, 1, 10239, kernel_handle);
-    kernel_src[n_bytes] = '\0';
-    check_ferror(kernel_handle, "fread");
-
-    cl_program program = clCreateProgramWithSource(context, 1, &kernel_src, NULL, &status);
-    check_cl(status, "create program");
-
-    // build the compute program executable
-    status = clBuildProgram(program, 0, NULL, NULL, NULL, NULL);
-    if (status != CL_BUILD_PROGRAM_FAILURE && status != CL_SUCCESS) {
-        check_cl(status, "build program");
-    } else {
-        size_t log_size;
-        status = clGetProgramBuildInfo(program, device_id, CL_PROGRAM_BUILD_LOG, 0, NULL, &log_size);
-        check_cl(status, "get program build log size");
-
-        char *log = malloc(log_size);
-        check_nn(log, "log");
-
-        status = clGetProgramBuildInfo(program, device_id, CL_PROGRAM_BUILD_LOG, log_size, log, NULL);
-        check_cl(status, "get program build log");
-
-        fprintf(stderr, "build kernel log:\n%s\n", log);
-    }
-
-    // create the compute kernel
-    kernel = clCreateKernel(program, "ray_cl", &status);
-    check_cl(status, "create kernel");
-
-#endif
     double last_xpos = 0, last_ypos = 0;
     /* Loop until the user closes the window */
     while (!glfwWindowShouldClose(window))
@@ -176,8 +189,8 @@ int main(void)
             horizontal_angle += (float)(xpos * alpha);
             vertical_angle += (float)(ypos * alpha);
             camera_target = (Point3f) { cosf(horizontal_angle) * cosf(vertical_angle)
-                                      , sinf(horizontal_angle) * cosf(vertical_angle)
-                                      , sinf(vertical_angle)};
+                , sinf(horizontal_angle) * cosf(vertical_angle)
+                    , sinf(vertical_angle)};
         }
         clock_t start = clock();
         captureOctTree(camera_pos, camera_target, up, width, height, piksele);
@@ -195,14 +208,12 @@ int main(void)
         glfwPollEvents();
     }
 
-#if TRACER_CL
-    clReleaseMemObject(mainOctCL);
-    clReleaseMemObject(image);
-    clReleaseProgram(program);
-    clReleaseKernel(kernel);
-    clReleaseCommandQueue(queue);
-    clReleaseContext(context);
-#endif
+    if (num_platforms > 0) {
+        clReleaseMemObject(mainOctCL);
+        clReleaseMemObject(image);
+        clReleaseKernel(kernel);
+        clReleaseCommandQueue(queue);
+    }
     glfwDestroyWindow(window);
 
     glfwTerminate();
@@ -255,92 +266,99 @@ static void key_callback(GLFWwindow* window, int key, int scancode, int action, 
                 if (render_method == Stacking) {
                     render_method = Stackless;
                     printf("Stackless");
-#if TRACER_CL
-                } else if (render_method == Stackless) {
+                } else if (render_method == Stackless && num_platforms > 0) {
                     render_method = TracerCL;
                     printf("TracerCL");
-#endif
                 } else {
                     render_method = Stacking;
                     printf("Stacking");
                 }
                 printf("\n");
                 break;
-            /*default:*/
+                /*default:*/
         }
         camera_target = (Point3f) { cosf(horizontal_angle) * cosf(vertical_angle)
-                                  , sinf(horizontal_angle) * cosf(vertical_angle)
-                                  , sinf(vertical_angle)};
+            , sinf(horizontal_angle) * cosf(vertical_angle)
+                , sinf(vertical_angle)};
     }
     printf("Camera position is: (%f, %f %f)\n", camera_pos.x, camera_pos.y, camera_pos.z);
     printf("Horizontal angle: %f, Vertical angle: %f\n", horizontal_angle, vertical_angle);
     printf("Camera target is: (%f, %f %f)\n", camera_target.x, camera_target.y, camera_target.z);
 }
 
+
+void push_oct_tree_partial(int c0, int c1, int c2, int c3, int c4, int c5, int c6, int c7)
+{
+    printf("Pushing partial %d %d %d %d %d %d %d %d\n", c0, c1, c2, c3, c4, c5, c6, c7 );
+    mainOctTree[octTreeLength].type = Partial;
+    mainOctTree[octTreeLength].nodes[0][1][1] = c0;
+    mainOctTree[c0].parent = octTreeLength;
+    mainOctTree[c0].x = 0;
+    mainOctTree[c0].y = 1;
+    mainOctTree[c0].z = 1;
+    mainOctTree[octTreeLength].nodes[1][1][1] = c1;
+    mainOctTree[c1].parent = octTreeLength;
+    mainOctTree[c1].x = 1;
+    mainOctTree[c1].y = 1;
+    mainOctTree[c1].z = 1;
+    mainOctTree[octTreeLength].nodes[0][0][1] = c2;
+    mainOctTree[c2].parent = octTreeLength;
+    mainOctTree[c2].x = 0;
+    mainOctTree[c2].y = 0;
+    mainOctTree[c2].z = 1;
+    mainOctTree[octTreeLength].nodes[1][0][1] = c3;
+    mainOctTree[c3].parent = octTreeLength;
+    mainOctTree[c3].x = 1;
+    mainOctTree[c3].y = 0;
+    mainOctTree[c3].z = 1;
+    mainOctTree[octTreeLength].nodes[0][1][0] = c4;
+    mainOctTree[c4].parent = octTreeLength;
+    mainOctTree[c4].x = 0;
+    mainOctTree[c4].y = 1;
+    mainOctTree[c4].z = 0;
+    mainOctTree[octTreeLength].nodes[1][1][0] = c5;
+    mainOctTree[c5].parent = octTreeLength;
+    mainOctTree[c5].x = 1;
+    mainOctTree[c5].y = 1;
+    mainOctTree[c5].z = 0;
+    mainOctTree[octTreeLength].nodes[0][0][0] = c6;
+    mainOctTree[c6].parent = octTreeLength;
+    mainOctTree[c6].x = 0;
+    mainOctTree[c6].y = 0;
+    mainOctTree[c6].z = 0;
+    mainOctTree[octTreeLength].nodes[1][0][0] = c7;
+    mainOctTree[c7].parent = octTreeLength;
+    mainOctTree[c7].x = 1;
+    mainOctTree[c7].y = 0;
+    mainOctTree[c7].z = 0;
+
+    octTreeLength++;
+}
+
+void push_oct_tree_solid(float r, float g, float b)
+{
+    printf("Pushing solid %f %f %f\n", r, g, b);
+    mainOctTree[octTreeLength].type = Solid;
+    mainOctTree[octTreeLength].color = (Color4f) {r,g,b,0};
+    octTreeLength++;
+}
+
+void push_oct_tree_empty(void)
+{
+    printf("Pushing empty\n");
+    mainOctTree[octTreeLength].type = Empty;
+    octTreeLength++;
+}
+
+
 static void initOctTree(void)
 {
-    mainOctTree = malloc(9*sizeof(*mainOctTree));
-    mainOctTree->parent = -1;
-    mainOctTree->type = Partial;
-    OctTreeNode tmp;
-    tmp.parent = 0;
-    tmp.type = Solid;
-    tmp.color = (Color4f) {0.0, 0.0, 1.0, 0.0};
-    tmp.x = 0;
-    tmp.y = 1;
-    tmp.z = 1;
-    mainOctTree[0].nodes[tmp.x][tmp.y][tmp.z] = 1;
-    mainOctTree[1] = tmp;
-    tmp.parent = 0;
-    tmp.type = Solid;
-    tmp.color = (Color4f) {1.0, 0.0, 0.0, 0.0};
-    tmp.x = 1;
-    tmp.y = 1;
-    tmp.z = 1;
-    mainOctTree[0].nodes[tmp.x][tmp.y][tmp.z] = 2;
-    mainOctTree[2] = tmp;
-    tmp.parent = 0;
-    tmp.type = Solid;
-    tmp.color = (Color4f) {1.0, 0.0, 1.0, 0.0};
-    tmp.x = 0;
-    tmp.y = 0;
-    tmp.z = 1;
-    mainOctTree[0].nodes[tmp.x][tmp.y][tmp.z] = 3;
-    mainOctTree[3] = tmp;
-    tmp.parent = 0;
-    tmp.type = Empty;
-    tmp.x = 1;
-    tmp.y = 0;
-    tmp.z = 1;
-    mainOctTree[0].nodes[tmp.x][tmp.y][tmp.z] = 4;
-    mainOctTree[4] = tmp;
-    tmp.parent = 0;
-    tmp.type = Solid;
-    tmp.color = (Color4f) {0.0, 1.0, 0.0, 0.0};
-    tmp.x = 0;
-    tmp.y = 1;
-    tmp.z = 0;
-    mainOctTree[0].nodes[tmp.x][tmp.y][tmp.z] = 5;
-    mainOctTree[5] = tmp;
-    tmp.parent = 0;
-    tmp.type = Empty;
-    tmp.x = 1;
-    tmp.y = 1;
-    tmp.z = 0;
-    mainOctTree[0].nodes[tmp.x][tmp.y][tmp.z] = 6;
-    mainOctTree[6] = tmp;
-    tmp.parent = 0;
-    tmp.type = Empty;
-    tmp.x = 0;
-    tmp.y = 0;
-    tmp.z = 0;
-    mainOctTree[0].nodes[tmp.x][tmp.y][tmp.z] = 7;
-    mainOctTree[7] = tmp;
-    tmp.parent = 0;
-    tmp.type = Empty;
-    tmp.x = 1;
-    tmp.y = 0;
-    tmp.z = 0;
-    mainOctTree[0].nodes[tmp.x][tmp.y][tmp.z] = 8;
-    mainOctTree[8] = tmp;
+    mainOctTree = malloc(32 * sizeof(*mainOctTree));
+    octTreeLength = 0;
+
+    load_file("model.json");
+
+    mainOctTree[0].parent = -1;
+    printf("Done loading.\n");
+
 }
