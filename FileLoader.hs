@@ -46,13 +46,12 @@ parseNode = withObject "NodeObject" $ \o -> do
   case t of
     "Empty" -> return Empty
     "Solid" -> do
-      col <- o .: "color"
-      r <- col .: "r" :: Parser Float
-      g <- col .: "g" :: Parser Float
-      b <- col .: "b" :: Parser Float
+      r <- o .: "r" :: Parser Float
+      g <- o .: "g" :: Parser Float
+      b <- o .: "b" :: Parser Float
       return $ Solid (r, g, b)
     "Partial" -> do
-      chi <- o .: "children" :: Parser [Int]
+      chi <- o .: "nodes" :: Parser [Int]
       return $ Partial (chi!!0) (chi!!1) (chi!!2) (chi!!3) (chi!!4) (chi!!5) (chi!!6) (chi!!7)
     _ -> fail ("Wrong node type! (unknown type: " ++ t ++ ")")
 
@@ -64,7 +63,7 @@ load_file a = do
   unless (Data.List.isSuffixOf ".json" str) $ fail "Wrong filetype."
   fileContent <- readFile str
   fileContent `seq` putStrLn $ "File loaded, parsing..."
-  putStrLn $ show $ unpack fileContent
+  --putStrLn $ show $ unpack fileContent
   case decode fileContent of
     Nothing -> putStrLn "Incorrect file syntax (check for missing commas and brackets)"
     Just (Array ar) -> forM_ ar processNode

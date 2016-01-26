@@ -11,6 +11,17 @@ flag debug
   description: compile C with -g and -O0
   default: False
 
+executable gen
+  main-is: gen.hs
+
+  build-depends:
+    aeson >= 0.10,
+    array >= 0.5,
+    base >= 4.5 && < 4.9,
+    bytestring >= 0.10
+
+  ghc-options: -Wall -O2 -funbox-strict-fields
+
 executable engine
   main-is:  engine.c
   c-sources: cl.c error.c geom.c globals.c render.c
@@ -26,8 +37,7 @@ executable engine
       base >= 4.5 && < 4.9,
       bytestring >= 0.10,
       unordered-containers >= 0.2,
-      vector >= 0.11,
-      scientific >= 0.3
+      vector >= 0.11
 
   ghc-options: -no-hs-main -Wall -O2
 

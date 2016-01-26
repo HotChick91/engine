@@ -289,7 +289,6 @@ static void key_callback(GLFWwindow* window, int key, int scancode, int action, 
 
 void push_oct_tree_partial(int c0, int c1, int c2, int c3, int c4, int c5, int c6, int c7)
 {
-    printf("Pushing partial %d %d %d %d %d %d %d %d\n", c0, c1, c2, c3, c4, c5, c6, c7 );
     int child_arr[8] = {c0, c1, c2, c3, c4, c5, c6, c7};
 
     mainOctTree[octTreeLength].type = Partial;
@@ -308,7 +307,6 @@ void push_oct_tree_partial(int c0, int c1, int c2, int c3, int c4, int c5, int c
 
 void push_oct_tree_solid(float r, float g, float b)
 {
-    printf("Pushing solid %f %f %f\n", r, g, b);
     mainOctTree[octTreeLength].type = Solid;
     mainOctTree[octTreeLength].color = (Color4f) {r,g,b,0};
     octTreeLength++;
@@ -316,7 +314,6 @@ void push_oct_tree_solid(float r, float g, float b)
 
 void push_oct_tree_empty(void)
 {
-    printf("Pushing empty\n");
     mainOctTree[octTreeLength].type = Empty;
     octTreeLength++;
 }
@@ -324,7 +321,7 @@ void push_oct_tree_empty(void)
 
 static void initOctTree(void)
 {
-    mainOctTree = malloc(32 * sizeof(*mainOctTree));
+    mainOctTree = malloc(1024 * 1024 * sizeof(*mainOctTree));
     octTreeLength = 0;
 
     load_file("model.json");
