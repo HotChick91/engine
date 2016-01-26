@@ -49,13 +49,10 @@ processNode o = do
 
 parseNode :: Value -> Parser Node
 parseNode (Object o) = do
-  t <- case HM.lookup "type" o of
-      Just (String t) -> return t
-      Just _ -> fail "Wrong type of type"
-      Nothing -> fail "No type field"
+  t <- o .: "type" :: Parser String
   case t of
     "Empty" -> return Empty
-    "Solid" -> 
+    "Solid" ->
       case parseMaybe parseColors (Object o) of
         Just (r, g, b) -> return $  Solid (r, g, b)
         Nothing -> fail "Wrong colors"
@@ -68,31 +65,16 @@ parseNode _ = fail "Expected Node object"
 
 parseColors :: Value -> Parser (Float, Float, Float)
 parseColors (Object o) = do
-  col <- case HM.lookup "color" o of
-    Just (Object x) -> return x
-    Just _ -> fail "Wrong type of color field"
-    Nothing -> fail "No color field found"
-  r <- case HM.lookup "r" col of
-    Just (Number n) -> return $ n
-    Just _ -> fail "Wrong type of color r field"
-    Nothing -> fail "No color r field found"
-  g <- case HM.lookup "g" col of
-    Just (Number n) -> return $ n
-    Just _ -> fail "Wrong type of color g field"
-    Nothing -> fail "No color g field found"
-  b <- case HM.lookup "b" col of
-    Just (Number n) -> return $ n
-    Just _ -> fail "Wrong type of color b field"
-    Nothing -> fail "No color b field found"
+  col <- o .: "color"
+  r <- col .: "r" :: Parser Scientific
+  g <- col .: "g" :: Parser Scientific
+  b <- col .: "b" :: Parser Scientific
   return (toRealFloat r,toRealFloat g,toRealFloat b)
 parseColors _ = fail "Expected colors object"
 
 parseChildren :: Value -> Parser [Int]
 parseChildren (Object o) = do
-  chi <- case HM.lookup "children" o of
-    Just (Array a) -> return a
-    Just _ -> fail "Wrong type of color field"
-    Nothing -> fail "No color field found"
+  chi <- o .: "children" :: Parser Array
   mapM remNum $ V.toList chi
   where
   remNum :: Value -> Parser Int
@@ -105,25 +87,12 @@ load_file a = do
   str <- peekCString a
   P.putStrLn $ "Loading file: " ++ show str
   unless (Data.List.isSuffixOf ".json" str) $ fail "Wrong filetype."
-  P.putStrLn $ "Going good 0"
   fileContent <- L.readFile str
-  {-let fileContent = L8.pack ("[" ++-}
-                      {-"  {\"id\" : 0, \"type\": \"Partial\", \"children\": [1,2,3,4,5,6,7,8]}" ++-}
-                      {-", {\"id\" : 1, \"type\": \"Solid\", \"color\" : {\"r\": 0.0, \"g\": 0.0, \"b\": 1.0}}" ++-}
-                      {-", {\"id\" : 2, \"type\": \"Solid\", \"color\" : {\"r\": 1.0, \"g\": 0.0, \"b\": 0.0}}" ++-}
-                      {-", {\"id\" : 3, \"type\": \"Solid\", \"color\" : {\"r\": 1.0, \"g\": 0.0, \"b\": 1.0}}" ++-}
-                      {-", {\"id\" : 4, \"type\": \"Empty\"}" ++-}
-                      {-", {\"id\" : 5, \"type\": \"Solid\", \"color\" : {\"r\": 0.0, \"g\": 1.0, \"b\": 1.0}}" ++-}
-                      {-", {\"id\" : 6, \"type\": \"Empty\"}" ++-}
-                      {-", {\"id\" : 7, \"type\": \"Empty\"}" ++-}
-                      {-", {\"id\" : 8, \"type\": \"Empty\"}" ++-}
-                      {-"]")-}
-  fileContent `seq` P.putStrLn $ "Going good 1"
+  fileContent `seq` P.putStrLn $ "File loaded, parsing..."
   P.putStrLn $ show $  L.unpack fileContent
-  P.putStrLn $ "Going good 2"
   case decode fileContent of
-    Nothing -> P.putStrLn "Nothing"
+    Nothing -> P.putStrLn "Incorrect file syntax (check for missing commas and brackets)"
     Just (Array ar) -> forM_ ar processNode
-    Just _ -> P.putStrLn "something else"
-  P.putStrLn $ "Going good 3"
+    Just _ -> P.putStrLn "Wrong file content (should be array)."
+  P.putStrLn $ "File parsing complete."
 

@@ -11,7 +11,7 @@
 #include "render.h"
 #include "types.h"
 
-// TODO zrobić na to odpowiedni plik
+// TODO create proper file for haskell stuff
 #include "HsFFI.h"
 
 void load_file(HsPtr name);
