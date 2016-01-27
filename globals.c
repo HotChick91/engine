@@ -11,8 +11,9 @@ Point3f light = {1.0f, -2.0f, 0.0f};
 float horizontal_angle = 2.0;
 float vertical_angle = 0.0;
 
-const float vertical_AOV = M_PI / 2;
-const float horizontal_AOV = M_PI / 2;
+float vertical_AOV = M_PI / 2;
+float horizontal_AOV = M_PI / 2;
+float AOVd = M_PI / 16;
 
 RenderMethod render_method = Stacking;
 
@@ -23,6 +24,7 @@ GLuint texture;
 GLFWwindow *window;
 const int height = 1024;
 const int width = 1024;
+
 
 cl_command_queue queue;
 cl_kernel kernel;

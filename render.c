@@ -207,10 +207,6 @@ void captureOctTree(Point3f camera, Point3f target, Point3f up, int width, int h
     up = vectNormalize(up);
 
     Point3f right = vectMul(target, up);
-    Point3f bottom_left_vec = vectSum(target, vectDiv(up, -2), vectDiv(right, -2));
-
-    Point3f dright = vectDiv(right, (float)width);
-    Point3f dup = vectDiv(up, (float)height);
 
     if (render_method == TracerCL) {
         // set the args values
@@ -221,18 +217,26 @@ void captureOctTree(Point3f camera, Point3f target, Point3f up, int width, int h
 
         status = clSetKernelArg(kernel, 0, sizeof(cl_float3), &camera);
         check_cl(status, "set arg 0");
-        status = clSetKernelArg(kernel, 1, sizeof(cl_float3), &light);
+        status = clSetKernelArg(kernel, 1, sizeof(cl_float3), &target);
         check_cl(status, "set arg 1");
-        status = clSetKernelArg(kernel, 2, sizeof(cl_float3), &bottom_left_vec);
+        status = clSetKernelArg(kernel, 2, sizeof(cl_float3), &light);
         check_cl(status, "set arg 2");
-        status = clSetKernelArg(kernel, 3, sizeof(cl_float3), &dup);
+        status = clSetKernelArg(kernel, 3, sizeof(cl_int), &width);
         check_cl(status, "set arg 3");
-        status = clSetKernelArg(kernel, 4, sizeof(cl_float3), &dright);
+        status = clSetKernelArg(kernel, 4, sizeof(cl_int), &height);
         check_cl(status, "set arg 4");
-        status = clSetKernelArg(kernel, 5, sizeof(cl_mem), &mainOctCL);
+        status = clSetKernelArg(kernel, 5, sizeof(cl_float), &horizontal_AOV);
         check_cl(status, "set arg 5");
-        status = clSetKernelArg(kernel, 6, sizeof(cl_mem), &image);
+        status = clSetKernelArg(kernel, 6, sizeof(cl_float), &horizontal_AOV);
         check_cl(status, "set arg 6");
+        status = clSetKernelArg(kernel, 7, sizeof(cl_float3), &up);
+        check_cl(status, "set arg 7");
+        status = clSetKernelArg(kernel, 8, sizeof(cl_float3), &right);
+        check_cl(status, "set arg 8");
+        status = clSetKernelArg(kernel, 9, sizeof(cl_mem), &mainOctCL);
+        check_cl(status, "set arg 9");
+        status = clSetKernelArg(kernel, 10, sizeof(cl_mem), &image);
+        check_cl(status, "set arg 10");
 
         // run kernel
         size_t global_work_size[] = {width, height};
