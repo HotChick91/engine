@@ -3,18 +3,22 @@
 #define ARR_IDX(x, y, col) ((((y) * width + (x)) * 3) + (col))
 #define ARR_IDX4(x, y, col) ((((y) * width + (x)) * 4) + (col))
 
-typedef struct Point3f {
+typedef struct {
     float x;
     float y;
     float z;
 } Point3f;
 
-typedef struct Color4f {
+typedef struct {
     float r;
     float g;
     float b;
     float a;
 } Color4f;
+
+typedef struct {
+    float v[3][3];
+} Matrix3f;
 
 //enum OctTreeNodeType { Empty, Solid, Partial };
 #define Empty 0

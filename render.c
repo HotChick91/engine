@@ -267,12 +267,23 @@ void captureOctTree(Point3f camera, Point3f target, Point3f up, int width, int h
         for (int y = 0; y < height; y++) for (int x = 0; x < width; x++)
         {
             Color4f color = {0.,0.,0.};
-            Point3f temp_target =
-                vectMulScalar(vectMulScalar(bottom_left_vec, dup, (float)y), dright, (float)x);
+
+            // TODO better distribution of rays (currently there is always one more to one side I think)
+            float target_v_angle = (-0.5 + y / (float)height) * vertical_AOV;
+            float target_h_angle = (-0.5 + x / (float)width) * horizontal_AOV;
+
+            // If we want positive angle we need "left" vector
+            Matrix3f up_rotation = createRotationMatrix(right, -target_v_angle);
+            Matrix3f right_rotation = createRotationMatrix(up, target_h_angle);
+
+            Point3f new_target = target;
+            new_target = multiplyVectMatrix(new_target, up_rotation);
+            new_target = multiplyVectMatrix(new_target, right_rotation);
+
             if (render_method == Stacking)
-                ray_cast_oct_tree_stacking(camera, temp_target, mainOctTree, 1.0, (Point3f) { 0, 0, 0 }, &color);
+                ray_cast_oct_tree_stacking(camera, new_target, mainOctTree, 1.0, (Point3f) { 0, 0, 0 }, &color);
             else
-                ray_cast_oct_tree_stackless(camera, temp_target, mainOctTree, &color);
+                ray_cast_oct_tree_stackless(camera, new_target, mainOctTree, &color);
             data[ARR_IDX(x, y, 0)] = color.r;
             data[ARR_IDX(x, y, 1)] = color.g;
             data[ARR_IDX(x, y, 2)] = color.b;

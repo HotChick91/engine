@@ -12,6 +12,9 @@ extern Point3f light;
 extern float horizontal_angle;
 extern float vertical_angle;
 
+extern float vertical_AOV;
+extern float horizontal_AOV;
+
 extern RenderMethod render_method;
 
 extern OctTreeNode *mainOctTree;

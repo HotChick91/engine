@@ -33,6 +33,41 @@ Point3f vectNormalize(Point3f a)
     return vectDiv(a, len);
 }
 
+Point3f multiplyVectMatrix(Point3f v, Matrix3f m)
+{
+    Point3f res;
+    res.x = v.x * m.v[0][0] + v.y * m.v[1][0] + v.z * m.v[2][0];
+    res.y = v.x * m.v[0][1] + v.y * m.v[1][1] + v.z * m.v[2][1];
+    res.z = v.x * m.v[0][2] + v.y * m.v[1][2] + v.z * m.v[2][2];
+    return res;
+}
+
+Matrix3f createRotationMatrix(Point3f axis, float angle)
+{
+    Matrix3f ret;
+    float l = axis.x;
+    float m = axis.y;
+    float n = axis.z;
+    float c = cosf(angle);
+    float s = sinf(angle);
+    float c_ = 1 - c;
+
+    ret.v[0][0] = l * l * c_ + c;
+    ret.v[0][1] = m * l * c_ - n * s;
+    ret.v[0][2] = n * l * c_ + m * s;
+
+    ret.v[1][0] = l * m * c_ + n * s;
+    ret.v[1][1] = m * m * c_ + c;
+    ret.v[1][2] = n * m * c_ - l * s;
+
+    ret.v[2][0] = l * n * c_ - m * s;
+    ret.v[2][1] = m * n * c_ + l * s;
+    ret.v[2][2] = n * n * c_ + c;
+
+    return ret;
+}
+
+
 int cmpDistData(const void * a, const void * b)
 {
     return (*(struct dist_data*)a).dist < (*(struct dist_data*)b).dist ? -1 : 1;

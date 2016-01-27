@@ -9,6 +9,9 @@ Point3f vectDiv(Point3f a, float c);
 Point3f vectScale(Point3f a, Point3f b);
 Point3f vectNormalize(Point3f a);
 
+Point3f multiplyVectMatrix(Point3f v, Matrix3f m);
+Matrix3f createRotationMatrix(Point3f axis, float angle);
+
 int cmpDistData(const void * a, const void * b);
 int vectPlaneIntersection(Point3f origin, Point3f direction, int plane, Point3f value);
 
