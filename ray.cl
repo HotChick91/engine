@@ -15,33 +15,26 @@ typedef struct OctTreeNode {
 } __attribute__((packed)) OctTreeNode;
 
 // TODO: see if using sign, step, mix, etc. would be a good idea
-kernel void ray_cl(float3 origin, float3 light, float3 bottom_left_vec, float3 dup, float3 dright, global OctTreeNode *trees, write_only image2d_t image)
+kernel void ray_cl(float3 origin, float3 light, float3 bottom_left_vec, float3 dup, float3 dright, global OctTreeNode *trees, write_only image2d_t image, float radius, float3 center, int offset)
 {
     int2 my_px;
-    float3 relative, new_relative;
-    float xdist, ydist, zdist, mindist;
-    int dx, dy, dz;
+    float3 relative;
     // TODO: see if OctTreeNode instead of a pointer makes any difference
-    global OctTreeNode *tree = trees;
+    global OctTreeNode *tree = trees + offset;
 
     my_px = (int2)(get_global_id(0), get_global_id(1));
     float3 direction = bottom_left_vec + dup * my_px.y + dright * my_px.x;
-
-    float3 center = (float3)(0,0,0);
-    float radius = 1;
+    float3 dist;
+    int3 d;
 
     for (;;) {
         relative = origin - center;
         
         while (tree->type == Partial) {
-            dx = relative.x > 0;
-            dy = relative.y > 0;
-            dz = relative.z > 0;
-            tree = trees + tree->nodes[dx][dy][dz];
+            d = -(relative > 0);
+            tree = trees + tree->nodes[d.x][d.y][d.z];
             radius /= 2.f;
-            center = (float3)( center.x + (2 * dx - 1) * radius,
-                               center.y + (2 * dy - 1) * radius,
-                               center.z + (2 * dz - 1) * radius );
+            center += convert_float3(2 * d - 1) * radius;
             relative = origin - center;
         }
 
@@ -54,33 +47,28 @@ kernel void ray_cl(float3 origin, float3 light, float3 bottom_left_vec, float3 d
 
         relative = clamp(relative, -radius, radius);
 
-        xdist = max((radius - relative.x) / direction.x, (-radius - relative.x) / direction.x);
-        ydist = max((radius - relative.y) / direction.y, (-radius - relative.y) / direction.y);
-        zdist = max((radius - relative.z) / direction.z, (-radius - relative.z) / direction.z);
-        dx = 0, dy = 0, dz = 0;
-        if (xdist < ydist && xdist < zdist) {
-            mindist = xdist;
-            dx = direction.x > 0 ? 1 : -1;
-        } else if (ydist < zdist) {
-            mindist = ydist;
-            dy = direction.y > 0 ? 1 : -1;
+        dist = max((radius - relative) / direction, (-radius - relative) / direction);
+        d = 0;
+        if (dist.x < dist.y && dist.x < dist.z) {
+            dist.z = dist.x;
+            d.x = direction.x > 0 ? 1 : -1;
+        } else if (dist.y < dist.z) {
+            dist.z = dist.y;
+            d.y = direction.y > 0 ? 1 : -1;
         } else {
-            mindist = zdist;
-            dz = direction.z > 0 ? 1 : -1;
+            d.z = direction.z > 0 ? 1 : -1;
         }
-        new_relative = relative + direction * mindist;
-        origin = new_relative + center;
+        relative += direction * dist.z;
+        origin = relative + center;
 
         while (tree->parent != -1) {
-            int nx = tree->x + dx;
-            int ny = tree->y + dy;
-            int nz = tree->z + dz;
+            int nx = tree->x + d.x;
+            int ny = tree->y + d.y;
+            int nz = tree->z + d.z;
             if (((nx | ny | nz) & (~1)) == 0) {
                 tree = trees + trees[tree->parent].nodes[nx][ny][nz];
                 // radius stays the same
-                center = (float3)( center.x + (2 * dx) * radius,
-                                   center.y + (2 * dy) * radius,
-                                   center.z + (2 * dz) * radius );
+                center += convert_float3(2 * d) * radius;
                 break;
             }
             center = (float3)( center.x - (2 * tree->x - 1) * radius,
