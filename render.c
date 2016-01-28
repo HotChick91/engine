@@ -158,6 +158,7 @@ next_ray:
     // to prevent bad things that potentially could happen due to numerical errors
     clamp(&local, radius);
 
+    // TODO FIXME for direction.[xyz] == 0
     xdist = MAX((radius - local.x) / direction.x, (-radius - local.x) / direction.x);
     ydist = MAX((radius - local.y) / direction.y, (-radius - local.y) / direction.y);
     zdist = MAX((radius - local.z) / direction.z, (-radius - local.z) / direction.z);

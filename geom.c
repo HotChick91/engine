@@ -51,14 +51,6 @@ static int epsLteF(const float a, const float b)
 {
     return b > a || epsEq(a, b); // Not necessarily great numerically
 }
-static int epsGteP(const Point3f a, const Point3f b)
-{
-    return epsGteF(a.x, b.x) && epsGteF(a.y, b.y) && epsGteF(a.z, b.z);
-}
-static int epsLteP(const Point3f a, const Point3f b)
-{
-    return epsLteF(a.x, b.x) && epsLteF(a.y, b.y) && epsLteF(a.z, b.z);
-}
 
 // check intersection of vector [origin; direction] with plane limited
 // by value and versor plane (1 on planeth coordinate, 0 on the rest)
