@@ -12,7 +12,7 @@ float horizontal_angle = 2.0;
 float vertical_angle = 0.0;
 
 float AOV = M_PI / 2;
-float AOVd = M_PI / 16;
+float AOVd = M_PI / 128;
 
 RenderMethod render_method = Stacking;
 

@@ -192,6 +192,7 @@ int main(int argc, char* argv[])
                 , sinf(horizontal_angle) * cosf(vertical_angle)
                     , sinf(vertical_angle)};
         }
+
         clock_t start = clock();
         captureOctTree(camera_pos, camera_target, up, width, height, piksele);
         clock_t end = clock();
@@ -227,6 +228,7 @@ static void key_callback(GLFWwindow* window, int key, int scancode, int action, 
     if (action == GLFW_PRESS || action == GLFW_REPEAT)
     {
         Point3f right = vectMul(camera_target, up);
+        right = vectNormalize(right);
         switch (key) {
             case GLFW_KEY_W:
                 camera_pos = vectMulScalar(camera_pos, camera_target, 0.05f);
