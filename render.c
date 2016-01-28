@@ -208,6 +208,8 @@ void captureOctTree(Point3f camera, Point3f target, Point3f up, int width, int h
     up = vectNormalize(up);
 
     Point3f right = vectMul(target, up);
+
+    target = vectDiv(target, tanf(AOV / 2.f));
     Point3f bottom_left_vec = vectSum(target, vectDiv(up, -2), vectDiv(right, -2));
 
     Point3f dright = vectDiv(right, (float)width);
