@@ -3,13 +3,13 @@
 #define ARR_IDX(x, y, col) ((((y) * width + (x)) * 3) + (col))
 #define ARR_IDX4(x, y, col) ((((y) * width + (x)) * 4) + (col))
 
-typedef struct Point3f {
+typedef struct {
     float x;
     float y;
     float z;
 } Point3f;
 
-typedef struct Color4f {
+typedef struct {
     float r;
     float g;
     float b;

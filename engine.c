@@ -258,6 +258,14 @@ static void key_callback(GLFWwindow* window, int key, int scancode, int action, 
             case GLFW_KEY_J:
                 horizontal_angle += 0.05f;
                 break;
+            case GLFW_KEY_T:
+                vertical_AOV -= AOVd;
+                horizontal_AOV -= AOVd;
+                break;
+            case GLFW_KEY_Y:
+                vertical_AOV += AOVd;
+                horizontal_AOV += AOVd;
+                break;
             case GLFW_KEY_M:
                 light = vectMulScalar(camera_pos, camera_target, 1.f);
                 break;
