@@ -208,10 +208,13 @@ void captureOctTree(Point3f camera, Point3f target, Point3f up, int width, int h
     up = vectNormalize(up);
 
     Point3f right = vectMul(target, up);
-    Point3f bottom_left_vec = vectSum(target, vectDiv(up, -2), vectDiv(right, -2));
 
-    Point3f dright = vectDiv(right, (float)width);
-    Point3f dup = vectDiv(up, (float)height);
+    Point3f bottom_left_vec = target;
+    bottom_left_vec = vectMulScalar(bottom_left_vec, up, -1 * tanf(vertical_AOV / 2) / 2);
+    bottom_left_vec = vectMulScalar(bottom_left_vec, right, -1 * tanf(horizontal_AOV / 2) / 2);
+
+    Point3f dup = vectDiv(up, (float)height / tanf(vertical_AOV / 2));
+    Point3f dright = vectDiv(right, (float)width / tanf(horizontal_AOV / 2));
 
     if (render_method == TracerCL) {
         // set the args values
