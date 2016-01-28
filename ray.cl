@@ -15,22 +15,42 @@ typedef struct OctTreeNode {
 } __attribute__((packed)) OctTreeNode;
 
 // TODO: see if using sign, step, mix, etc. would be a good idea
-kernel void ray_cl(float3 origin, float3 light, float3 bottom_left_vec, float3 dup, float3 dright, global OctTreeNode *trees, write_only image2d_t image)
+kernel void ray_cl(float3 camera, float3 light, float3 bottom_left_vec, float3 dup, float3 dright, global OctTreeNode *trees, write_only image2d_t image, float cradius, float3 ccenter, int offset)
 {
     int2 my_px;
     float3 relative, new_relative;
     float xdist, ydist, zdist, mindist;
     int dx, dy, dz;
+
     // TODO: see if OctTreeNode instead of a pointer makes any difference
-    global OctTreeNode *tree = trees;
+    global OctTreeNode *tree;
+    float3 origin;
 
-    my_px = (int2)(get_global_id(0), get_global_id(1));
-    float3 direction = bottom_left_vec + dup * my_px.y + dright * my_px.x;
+    float3 direction;
 
-    float3 center = (float3)(0,0,0);
-    float radius = 1;
+    float3 center;
+    float radius;
+
+    int reset = 1;
+    int i = 0;
 
     for (;;) {
+        if (reset) {
+            if (i == 64)
+                return;
+            tree = trees + offset;
+            origin = camera;
+
+            my_px = (int2)(get_global_id(0) * 64 + i, get_global_id(1));
+            direction = bottom_left_vec + dup * my_px.y + dright * my_px.x;
+
+            center = ccenter;
+            radius = cradius;
+            
+            reset = 0;
+            i++;
+        }
+
         relative = origin - center;
         
         while (tree->type == Partial) {
@@ -40,8 +60,8 @@ kernel void ray_cl(float3 origin, float3 light, float3 bottom_left_vec, float3 d
             tree = trees + tree->nodes[dx][dy][dz];
             radius /= 2.f;
             center = (float3)( center.x + (2 * dx - 1) * radius,
-                               center.y + (2 * dy - 1) * radius,
-                               center.z + (2 * dz - 1) * radius );
+                                center.y + (2 * dy - 1) * radius,
+                                center.z + (2 * dz - 1) * radius );
             relative = origin - center;
         }
 
@@ -49,7 +69,8 @@ kernel void ray_cl(float3 origin, float3 light, float3 bottom_left_vec, float3 d
             float l_dist = distance(light, origin);
             float intensity = 2.f / (2.f + l_dist * l_dist);
             write_imagef(image, my_px, tree->color * intensity);
-            return;
+            reset = 1;
+            continue;
         }
 
         relative = clamp(relative, -radius, radius);
@@ -79,20 +100,20 @@ kernel void ray_cl(float3 origin, float3 light, float3 bottom_left_vec, float3 d
                 tree = trees + trees[tree->parent].nodes[nx][ny][nz];
                 // radius stays the same
                 center = (float3)( center.x + (2 * dx) * radius,
-                                   center.y + (2 * dy) * radius,
-                                   center.z + (2 * dz) * radius );
+                                    center.y + (2 * dy) * radius,
+                                    center.z + (2 * dz) * radius );
                 break;
             }
             center = (float3)( center.x - (2 * tree->x - 1) * radius,
-                               center.y - (2 * tree->y - 1) * radius,
-                               center.z - (2 * tree->z - 1) * radius );
+                                center.y - (2 * tree->y - 1) * radius,
+                                center.z - (2 * tree->z - 1) * radius );
             radius *= 2.f;
             tree = trees + tree->parent;
         }
 
         if (tree->parent == -1) {
-            write_imagef(image, my_px, (float4)(0, 0, 0, 0));
-            return;
+            write_imagef(image, my_px, (float4)(1, 1, 1, 0));
+            reset = 1;
         }
     }
 }

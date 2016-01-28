@@ -101,7 +101,7 @@ static void init_cl(void)
     SOFT_CHECK_CL(status, "create program");
 
     // build the compute program executable
-    status = clBuildProgram(program, 0, NULL, NULL, NULL, NULL);
+    status = clBuildProgram(program, 0, NULL, "-cl-std=CL2.0", NULL, NULL);
     if (status != CL_BUILD_PROGRAM_FAILURE && status != CL_SUCCESS) {
         SOFT_CHECK_CL(status, "build program");
     } else {
