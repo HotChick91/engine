@@ -30,6 +30,11 @@ kernel void ray_cl(float3 origin, float3 light, float3 bottom_left_vec, float3 d
     float3 center = (float3)(0,0,0);
     float radius = 1;
 
+    bool chasing_light = 0;
+    float4 color = (float4)(0,0,0,0);
+    float intensity;
+    float ambient = 0.1f;
+
     for (;;) {
         relative = origin - center;
         
@@ -45,11 +50,21 @@ kernel void ray_cl(float3 origin, float3 light, float3 bottom_left_vec, float3 d
             relative = origin - center;
         }
 
-        if (tree->type == Solid) {
+        if (chasing_light) {
+            float3 relative_light = light - center;
+            if (all(relative_light == clamp(relative_light, -radius, radius))) {
+                write_imagef(image, my_px, color * max(intensity, ambient));
+                return;
+            } else if (tree->type == Solid) {
+                write_imagef(image, my_px, color * ambient);
+                return;
+            }
+        } else if (tree->type == Solid) {
             float l_dist = distance(light, origin);
-            float intensity = 2.f / (2.f + l_dist * l_dist);
-            write_imagef(image, my_px, tree->color * intensity);
-            return;
+            intensity = 2.f / (2.f + l_dist * l_dist);
+            color = tree->color;
+            chasing_light = 1;
+            direction = light - origin;
         }
 
         relative = clamp(relative, -radius, radius);
@@ -91,7 +106,7 @@ kernel void ray_cl(float3 origin, float3 light, float3 bottom_left_vec, float3 d
         }
 
         if (tree->parent == -1) {
-            write_imagef(image, my_px, (float4)(0, 0, 0, 0));
+            write_imagef(image, my_px, color * ambient);
             return;
         }
     }

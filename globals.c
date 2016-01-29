@@ -7,7 +7,7 @@
 Point3f camera_pos = {0.89f,-0.98f,-0.25f};
 Point3f camera_target = {0.0f,1.0f,0.0f};
 Point3f up = {0.f, 0.f, 1.f};
-Point3f light = {1.0f, -2.0f, 0.0f};
+Point3f light = {0.0f, 0.0f, 0.0f};
 float horizontal_angle = 2.0;
 float vertical_angle = 0.0;
 
