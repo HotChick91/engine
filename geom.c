@@ -33,9 +33,9 @@ Point3f vectNormalize(Point3f a)
     return vectDiv(a, len);
 }
 
-int cmpDistData(const void * a, const void * b)
+int cmpDistData(const void *a, const void *b)
 {
-    return (*(struct dist_data*)a).dist < (*(struct dist_data*)b).dist ? -1 : 1;
+    return ((dist_data *)a)->dist < ((dist_data *)b)->dist ? -1 : 1;
 }
 
 const float eps = 0.000001f;
@@ -57,9 +57,9 @@ static int epsLteF(const float a, const float b)
 int vectPlaneIntersection(Point3f origin, Point3f direction, int plane, Point3f value)
 {
     float dist;
-    float* origin_a = (float*)(&origin);
-    float* value_a = (float*)(&value);
-    float* direction_a = (float*)(&direction);
+    float *origin_a = (float *)&origin;
+    float *value_a = (float *)&value;
+    float *direction_a = (float *)&direction;
 
     if (plane < 0 || plane >= 3) return 0;
 
@@ -70,7 +70,7 @@ int vectPlaneIntersection(Point3f origin, Point3f direction, int plane, Point3f 
     dist = (value_a[plane] - origin_a[plane]) / direction_a[plane];
 
     Point3f intersect = vectMulScalar(origin, direction, dist);
-    float* intersect_a = (float*)(&intersect);
+    float *intersect_a = (float *)&intersect;
 
     float i_1, v_1, i_2, v_2;
     i_1 = intersect_a[(plane + 1) % 3];

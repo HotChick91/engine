@@ -9,7 +9,7 @@ Point3f vectDiv(Point3f a, float c);
 Point3f vectScale(Point3f a, Point3f b);
 Point3f vectNormalize(Point3f a);
 
-int cmpDistData(const void * a, const void * b);
+int cmpDistData(const void *a, const void *b);
 int vectPlaneIntersection(Point3f origin, Point3f direction, int plane, Point3f value);
 
 float MAX(float a, float b);

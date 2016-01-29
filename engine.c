@@ -19,7 +19,7 @@ void push_oct_tree_empty(void);
 void push_oct_tree_solid(float r, float g, float b);
 void push_oct_tree_partial(int c0, int c1, int c2, int c3, int c4, int c5, int c6, int c7);
 
-static void key_callback(GLFWwindow* windows, int key, int scancode, int action, int mods);
+static void key_callback(GLFWwindow *windows, int key, int scancode, int action, int mods);
 static void initOctTree(void);
 
 #define SOFT_CHECK_CL(status, msg) do {if (status != CL_SUCCESS) {num_platforms = 0; fprintf(stderr, "WARNING: %s (%d)\n", msg, status); return;}} while (0)
@@ -36,11 +36,11 @@ static void init_cl(void)
     status = clGetPlatformIDs(1, &platform_id, &num_platforms);
     SOFT_CHECK_CL(status, "get platform ids");
 
-    printf("#platforms: %u\n", num_platforms);
+    fprintf(stderr, "#platforms: %u\n", num_platforms);
     if (num_platforms == 0)
         return;
 
-    char info[4][128];
+    static char info[4][128];
     status = clGetPlatformInfo(platform_id, CL_PLATFORM_PROFILE, 128, info[0], NULL);
     SOFT_CHECK_CL(status, "get platform profile");
     status = clGetPlatformInfo(platform_id, CL_PLATFORM_VERSION, 128, info[1], NULL);
@@ -50,10 +50,10 @@ static void init_cl(void)
     status = clGetPlatformInfo(platform_id, CL_PLATFORM_VENDOR, 128, info[3], NULL);
     SOFT_CHECK_CL(status, "get platform vendor");
 
-    printf("profile: %s\n", info[0]);
-    printf("version: %s\n", info[1]);
-    printf("name: %s\n", info[2]);
-    printf("vendor: %s\n", info[3]);
+    fprintf(stderr, "profile: %s\n", info[0]);
+    fprintf(stderr, "version: %s\n", info[1]);
+    fprintf(stderr, "name: %s\n", info[2]);
+    fprintf(stderr, "vendor: %s\n", info[3]);
 
     cl_context_properties *props = getContextProperties(platform_id);
     context = clCreateContextFromType(props, CL_DEVICE_TYPE_GPU, NULL, NULL, &status);
@@ -132,14 +132,14 @@ static void init_cl(void)
     render_method = TracerCL;
 }
 
-int main(int argc, char* argv[])
+int main(int argc, char **argv)
 {
     glfwSetErrorCallback(error_callback);
 
     /* Initialize the library */
     if (!glfwInit()){
         fprintf(stderr, "Initialization failed.\n");
-        return -1;
+        return 1;
     }
 
     /* Create a windowed mode window and its OpenGL context */
@@ -147,7 +147,7 @@ int main(int argc, char* argv[])
     if (!window) {
         glfwTerminate();
         fprintf(stderr, "Error creating window.\n");
-        return -1;
+        return 1;
     }
 
     /* Make the window's context current */
@@ -162,13 +162,14 @@ int main(int argc, char* argv[])
     camera_target = (Point3f) { cosf(horizontal_angle) * cosf(vertical_angle)
         , sinf(horizontal_angle) * cosf(vertical_angle)
             , sinf(vertical_angle)};
-    float * piksele = malloc(height*width*3*sizeof(*piksele));
+    float *piksele = malloc(height*width*3*sizeof(*piksele));
 
     printf("sizeof(OctTreeNode)=%d\n", (int)sizeof(OctTreeNode));
 
     //****************************
 
     init_cl();
+    fflush(stderr);
 
     double last_xpos = 0, last_ypos = 0;
     /* Loop until the user closes the window */
@@ -221,7 +222,7 @@ int main(int argc, char* argv[])
     return 0;
 }
 
-static void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods)
+static void key_callback(GLFWwindow *window, int key, int scancode, int action, int mods)
 {
     if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
         glfwSetWindowShouldClose(window, GL_TRUE);
@@ -267,21 +268,21 @@ static void key_callback(GLFWwindow* window, int key, int scancode, int action, 
                 AOV += AOVd;
                 break;
             case GLFW_KEY_M:
-                light = vectMulScalar(camera_pos, camera_target, 1.f);
+                light = camera_pos;
                 break;
             case GLFW_KEY_P:
-                printf("Current rendering method is: ");
+                fprintf(stderr, "Current rendering method is: ");
                 if (render_method == Stacking) {
                     render_method = Stackless;
-                    printf("Stackless");
+                    fprintf(stderr, "Stackless\n");
                 } else if (render_method == Stackless && num_platforms > 0) {
                     render_method = TracerCL;
-                    printf("TracerCL");
+                    fprintf(stderr, "TracerCL\n");
                 } else {
                     render_method = Stacking;
-                    printf("Stacking");
+                    fprintf(stderr, "Stacking\n");
                 }
-                printf("\n");
+                fflush(stderr);
                 break;
                 /*default:*/
         }
@@ -289,9 +290,6 @@ static void key_callback(GLFWwindow* window, int key, int scancode, int action, 
             , sinf(horizontal_angle) * cosf(vertical_angle)
                 , sinf(vertical_angle)};
     }
-    printf("Camera position is: (%f, %f %f)\n", camera_pos.x, camera_pos.y, camera_pos.z);
-    printf("Horizontal angle: %f, Vertical angle: %f\n", horizontal_angle, vertical_angle);
-    printf("Camera target is: (%f, %f %f)\n", camera_target.x, camera_target.y, camera_target.z);
 }
 
 
@@ -326,7 +324,6 @@ void push_oct_tree_empty(void)
     octTreeLength++;
 }
 
-
 static void initOctTree(void)
 {
     mainOctTree = malloc(1024 * 1024 * sizeof(*mainOctTree));
@@ -335,6 +332,6 @@ static void initOctTree(void)
     load_file("model.json");
 
     mainOctTree[0].parent = -1;
-    printf("Done loading.\n");
-
+    fprintf(stderr, "Done loading.\n");
+    fflush(stderr);
 }

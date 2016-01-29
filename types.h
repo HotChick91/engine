@@ -21,7 +21,7 @@ typedef struct {
 #define Solid 1
 #define Partial 2
 
-typedef struct OctTreeNode {
+typedef struct {
     char x, y, z;
     char type;
     int parent;
@@ -31,9 +31,9 @@ typedef struct OctTreeNode {
     };
 } OctTreeNode;
 
-struct dist_data {
+typedef struct {
     float dist;
     int plane;
-};
+} dist_data;
 
-typedef enum RenderMethod { Stacking, Stackless, TracerCL } RenderMethod;
+typedef enum { Stacking, Stackless, TracerCL } RenderMethod;

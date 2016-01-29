@@ -32,7 +32,8 @@ void check_gl(void) {
         die("gl error", "gl error", err);
 }
 
-void error_callback(int error, const char* description)
+void error_callback(int error, const char *description)
 {
     fprintf(stderr, "(%d) %s\n", error, description);
+    fflush(stderr);
 }

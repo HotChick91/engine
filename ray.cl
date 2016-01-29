@@ -4,7 +4,7 @@
 #define Solid 1
 #define Partial 2
 
-typedef struct OctTreeNode {
+typedef struct {
     char x, y, z;
     char type;
     int parent;

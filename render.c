@@ -20,7 +20,7 @@ static OctTreeNode *maybeSibling(OctTreeNode *tree, int dx, int dy, int dz)
     return mainOctTree + mainOctTree[tree->parent].nodes[nx][ny][nz];
 }
 
-static void calculate_light(Point3f p, Color4f * color)
+static void calculate_light(Point3f p, Color4f *color)
 {
     float l_dist2 = (light.x - p.x) * (light.x - p.x)
         + (light.y - p.y) * (light.y - p.y)
@@ -31,7 +31,7 @@ static void calculate_light(Point3f p, Color4f * color)
     color->b *= intensity;
 }
 
-static int ray_cast_oct_tree_stacking(Point3f origin, Point3f direction, OctTreeNode * tree, float radius, Point3f center, Color4f * color)
+static int ray_cast_oct_tree_stacking(Point3f origin, Point3f direction, OctTreeNode *tree, float radius, Point3f center, Color4f *color)
 {
     // TODO check if origin inside tree?
     // TODO ładnie się wywalić jak tree == Null
@@ -45,11 +45,11 @@ static int ray_cast_oct_tree_stacking(Point3f origin, Point3f direction, OctTree
     // if (tree->type == Partial)
 
     Point3f local = vectMulScalar(origin, center, -1);
-    float* local_a = (float*)(&local);
-    float* direction_a = (float*)(&direction);
+    float* local_a = (float *)&local;
+    float* direction_a = (float *)&direction;
 
     // Check if we intersect 0-planes, and if so at what distance from origin
-    struct dist_data intersection_dist[5];
+    dist_data intersection_dist[5];
     intersection_dist[0].dist = 0;
     intersection_dist[0].plane = -1;
     int intersection_size = 1;
@@ -77,7 +77,7 @@ static int ray_cast_oct_tree_stacking(Point3f origin, Point3f direction, OctTree
         Point3f final_collision;
 
         Point3f oct = {half_point.x < 0. ? -1.f : 1.f, half_point.y < 0. ? -1.f : 1.f, half_point.z < 0. ? -1.f : 1.f};
-        float* oct_a = (float*)(&oct);
+        float *oct_a = (float *)&oct;
         Point3f pl = {radius * oct.x, radius * oct.y, radius * oct.z};
 
         int found = 0;
@@ -104,7 +104,7 @@ static int ray_cast_oct_tree_stacking(Point3f origin, Point3f direction, OctTree
         }
 
         if (found) {
-            OctTreeNode * t = mainOctTree + tree->nodes[half_point.x > 0][half_point.y > 0][half_point.z > 0];
+            OctTreeNode *t = mainOctTree + tree->nodes[half_point.x > 0][half_point.y > 0][half_point.z > 0];
             Point3f new_pos;
             new_pos.x = center.x + (radius / 2.f) * oct.x;
             new_pos.y = center.y + (radius / 2.f) * oct.y;
@@ -114,13 +114,14 @@ static int ray_cast_oct_tree_stacking(Point3f origin, Point3f direction, OctTree
             {
                 calculate_light(final_collision, color);
             }
-            if (ret) return 1;
+            if (ret)
+                return 1;
         }
     }
     return 0;
 }
 
-static void ray_cast_oct_tree_stackless(Point3f origin, Point3f direction, OctTreeNode * tree, Color4f * color)
+static void ray_cast_oct_tree_stackless(Point3f origin, Point3f direction, OctTreeNode *tree, Color4f *color)
 {
     Point3f local, new_local;
     float xdist, ydist, zdist, mindist;
@@ -201,7 +202,7 @@ next_ray:
     color->r = color->g = color->b = color->a = 0;
 }
 
-void captureOctTree(Point3f camera, Point3f target, Point3f up, int width, int height, float* data)
+void captureOctTree(Point3f camera, Point3f target, Point3f up, int width, int height, float *data)
 {
     //normalize vectors
     target = vectNormalize(target);
