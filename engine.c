@@ -15,7 +15,7 @@
 #include "HsFFI.h"
 
 void load_file(HsPtr name);
-void push_oct_tree_empty(void);
+void push_oct_tree_empty(int n0, int n1, int n2, int n3, int n4, int n5, int l0, int l1, int l2, int l3, int l4, int l5);
 void push_oct_tree_solid(float r, float g, float b);
 void push_oct_tree_partial(int c0, int c1, int c2, int c3, int c4, int c5, int c6, int c7);
 
@@ -164,7 +164,7 @@ int main(int argc, char **argv)
             , sinf(vertical_angle)};
     float *piksele = malloc(height*width*3*sizeof(*piksele));
 
-    printf("sizeof(OctTreeNode)=%d\n", (int)sizeof(OctTreeNode));
+    fprintf(stderr, "sizeof(OctTreeNode)=%d\n", (int)sizeof(OctTreeNode));
 
     //****************************
 
@@ -297,16 +297,11 @@ void push_oct_tree_partial(int c0, int c1, int c2, int c3, int c4, int c5, int c
 {
     int child_arr[8] = {c0, c1, c2, c3, c4, c5, c6, c7};
 
-    mainOctTree[octTreeLength].type = Partial;
     for (int i = 0; i < 8; i++) {
         int x = (i / 4) % 2;
         int y = (i / 2) % 2;
         int z = i % 2;
         mainOctTree[octTreeLength].nodes[x][y][z] = child_arr[i];
-        mainOctTree[child_arr[i]].parent = octTreeLength;
-        mainOctTree[child_arr[i]].x = x;
-        mainOctTree[child_arr[i]].y = y;
-        mainOctTree[child_arr[i]].z = z;
     }
     octTreeLength++;
 }
@@ -318,9 +313,21 @@ void push_oct_tree_solid(float r, float g, float b)
     octTreeLength++;
 }
 
-void push_oct_tree_empty(void)
+void push_oct_tree_empty(int n0, int n1, int n2, int n3, int n4, int n5, int l0, int l1, int l2, int l3, int l4, int l5)
 {
     mainOctTree[octTreeLength].type = Empty;
+    mainOctTree[octTreeLength].neighbors[0][0] = n0;
+    mainOctTree[octTreeLength].neighbors[0][1] = n1;
+    mainOctTree[octTreeLength].neighbors[1][0] = n2;
+    mainOctTree[octTreeLength].neighbors[1][1] = n3;
+    mainOctTree[octTreeLength].neighbors[2][0] = n4;
+    mainOctTree[octTreeLength].neighbors[2][1] = n5;
+    mainOctTree[octTreeLength].levels[0][0] = l0;
+    mainOctTree[octTreeLength].levels[0][1] = l1;
+    mainOctTree[octTreeLength].levels[1][0] = l2;
+    mainOctTree[octTreeLength].levels[1][1] = l3;
+    mainOctTree[octTreeLength].levels[2][0] = l4;
+    mainOctTree[octTreeLength].levels[2][1] = l5;
     octTreeLength++;
 }
 
@@ -331,7 +338,6 @@ static void initOctTree(void)
 
     load_file("model.json");
 
-    mainOctTree[0].parent = -1;
     fprintf(stderr, "Done loading.\n");
     fflush(stderr);
 }

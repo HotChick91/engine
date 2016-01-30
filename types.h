@@ -16,18 +16,21 @@ typedef struct {
     float a;
 } Color4f;
 
-//enum OctTreeNodeType { Empty, Solid, Partial };
-#define Empty 0
-#define Solid 1
-#define Partial 2
+#define Empty (-1)
+#define Solid (-2)
 
-typedef struct {
-    char x, y, z;
-    char type;
-    int parent;
-    union {
+typedef union {
+    struct {
+        short type;
+        short garbage[7];
         Color4f color;
-        int nodes[2][2][2];
+    };
+    int nodes[2][2][2];
+    struct {
+        char padding[2];
+        // 0 for root, -1 for its children, and so on
+        char levels[3][2];
+        int neighbors[3][2];
     };
 } OctTreeNode;
 

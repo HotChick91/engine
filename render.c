@@ -12,12 +12,15 @@
 
 static OctTreeNode *maybeSibling(OctTreeNode *tree, int dx, int dy, int dz)
 {
+    return NULL;
+    /*
     int nx = tree->x + dx;
     int ny = tree->y + dy;
     int nz = tree->z + dz;
     if ((nx | ny | nz) & (~1))
         return NULL;
     return mainOctTree + mainOctTree[tree->parent].nodes[nx][ny][nz];
+    */
 }
 
 static void calculate_light(Point3f p, Color4f *color)
@@ -123,7 +126,7 @@ static int ray_cast_oct_tree_stacking(Point3f origin, Point3f direction, OctTree
 
 static void ray_cast_oct_tree_stackless(Point3f origin, Point3f direction, OctTreeNode *tree, Color4f *color)
 {
-    Point3f local, new_local;
+    /*Point3f local, new_local;
     float xdist, ydist, zdist, mindist;
     int dx, dy, dz;
 
@@ -198,7 +201,7 @@ next_ray:
         };
         radius *= 2.f;
         tree = mainOctTree + tree->parent;
-    }
+    }*/
     color->r = color->g = color->b = color->a = 0;
 }
 
