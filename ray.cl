@@ -14,6 +14,8 @@ typedef struct {
     };
 } __attribute__((packed)) OctTreeNode;
 
+constant float ambient = 0.1f;
+
 // TODO: see if using sign, step, mix, etc. would be a good idea
 kernel void ray_cl(float3 origin, float3 light, float3 bottom_left_vec, float3 dup, float3 dright, global OctTreeNode *trees, write_only image2d_t image)
 {
@@ -23,6 +25,7 @@ kernel void ray_cl(float3 origin, float3 light, float3 bottom_left_vec, float3 d
     int dx, dy, dz;
     // TODO: see if OctTreeNode instead of a pointer makes any difference
     global OctTreeNode *tree = trees;
+    global OctTreeNode *last_empty_tree = trees;
 
     my_px = (int2)(get_global_id(0), get_global_id(1));
     float3 direction = bottom_left_vec + dup * my_px.y + dright * my_px.x;
@@ -33,7 +36,6 @@ kernel void ray_cl(float3 origin, float3 light, float3 bottom_left_vec, float3 d
     bool chasing_light = 0;
     float4 color = (float4)(0,0,0,0);
     float intensity;
-    float ambient = 0.1f;
 
     for (;;) {
         relative = origin - center;
@@ -60,13 +62,15 @@ kernel void ray_cl(float3 origin, float3 light, float3 bottom_left_vec, float3 d
                 return;
             }
         } else if (tree->type == Solid) {
-            float l_dist = distance(light, origin);
-            intensity = 2.f / (2.f + l_dist * l_dist);
+            float dist = distance(light, origin);
+            intensity = 2.f / (2.f + dist * dist);
             color = tree->color;
             chasing_light = 1;
             direction = light - origin;
+            tree = last_empty_tree;
         }
 
+        last_empty_tree = tree;
         relative = clamp(relative, -radius, radius);
 
         xdist = max((radius - relative.x) / direction.x, (-radius - relative.x) / direction.x);
