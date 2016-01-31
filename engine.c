@@ -15,20 +15,22 @@
 #include "HsFFI.h"
 
 void load_file(HsPtr name);
-void push_oct_tree_empty(int n0, int n1, int n2, int n3, int n4, int n5, int l0, int l1, int l2, int l3, int l4, int l5);
+void push_oct_tree_empty(void);
 void push_oct_tree_solid(float r, float g, float b);
 void push_oct_tree_partial(int c0, int c1, int c2, int c3, int c4, int c5, int c6, int c7);
 
 static void key_callback(GLFWwindow *windows, int key, int scancode, int action, int mods);
 static void initOctTree(void);
 
+cl_context context;
+cl_program program;
 #define SOFT_CHECK_CL(status, msg) do {if (status != CL_SUCCESS) {num_platforms = 0; fprintf(stderr, "WARNING: %s (%d)\n", msg, status); return;}} while (0)
 static void init_cl(void)
 {
     cl_int status;
     cl_platform_id platform_id;
-    cl_context context;
-    cl_program program;
+    //cl_context context;
+    //cl_program program;
 
     char *kernel_src = malloc(10240);
     check_nn(kernel_src, "kernel_src");
@@ -68,7 +70,8 @@ static void init_cl(void)
     SOFT_CHECK_CL(status, "create command queue");
 
     // allocate memory objects
-    mainOctCL = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, octTreeLength*sizeof(OctTreeNode), mainOctTree, &status);
+    //mainOctCL = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, octTreeLength*sizeof(OctTreeNode), mainOctTree, &status);
+    mainOctCL = clCreateBuffer(context, CL_MEM_COPY_HOST_PTR, octTreeLength*sizeof(OctTreeNode), mainOctTree, &status);
     SOFT_CHECK_CL(status, "create buffer");
 
     glGenTextures(1, &texture);
@@ -122,16 +125,19 @@ static void init_cl(void)
     kernel = clCreateKernel(program, "ray_cl", &status);
     SOFT_CHECK_CL(status, "create kernel");
 
-    status = clReleaseProgram(program);
-    SOFT_CHECK_CL(status, "release program");
+    //status = clReleaseProgram(program);
+    //SOFT_CHECK_CL(status, "release program");
 
-    status = clReleaseContext(context);
-    SOFT_CHECK_CL(status, "release context");
+    //status = clReleaseContext(context);
+    //SOFT_CHECK_CL(status, "release context");
 
     fprintf(stderr, "OpenCL initialization successful\n");
     render_method = TracerCL;
 }
 
+CheatSheet auxes[1024*1024];
+static void dump_tree(void);
+static void calc_levels(int id);
 int main(int argc, char **argv)
 {
     glfwSetErrorCallback(error_callback);
@@ -156,6 +162,7 @@ int main(int argc, char **argv)
     glfwSetKeyCallback(window, key_callback);
 
     //**************************** generowanie przykładowych piksli
+    auxes[0].parent = -1;
     hs_init(&argc, &argv);
     initOctTree();
     hs_exit();
@@ -163,12 +170,54 @@ int main(int argc, char **argv)
         , sinf(horizontal_angle) * cosf(vertical_angle)
             , sinf(vertical_angle)};
     float *piksele = malloc(height*width*3*sizeof(*piksele));
+    calc_levels(0);
 
     fprintf(stderr, "sizeof(OctTreeNode)=%d\n", (int)sizeof(OctTreeNode));
+    fprintf(stderr, "sizeof(CheatSheet)=%d\n", (int)sizeof(CheatSheet));
+    fflush(stderr);
 
     //****************************
 
     init_cl();
+
+    //dump_tree();
+    cl_int status;
+
+    cl_mem auxesCL = clCreateBuffer(context, CL_MEM_COPY_HOST_PTR, octTreeLength*sizeof(*auxes), auxes, &status);
+    check_cl(status, "create auxes buffer");
+
+    cl_mem tasksCL = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, 8*sizeof(int), mainOctTree[0].nodes, &status);
+    check_cl(status, "create tasks buffer");
+
+    cl_kernel find_neighbors = clCreateKernel(program, "find_neighbors", &status);
+    check_cl(status, "create find_neighbors");
+
+    status = clSetKernelArg(find_neighbors, 0, sizeof(cl_mem), &mainOctCL);
+    check_cl(status, "set find_neighbors arg 0");
+    status = clSetKernelArg(find_neighbors, 1, sizeof(cl_mem), &auxesCL);
+    check_cl(status, "set find_neighbors arg 1");
+    status = clSetKernelArg(find_neighbors, 2, sizeof(cl_mem), &tasksCL);
+    check_cl(status, "set find_neighbors arg 2");
+
+    size_t global_work_size = 8;
+    size_t local_work_size = 1;
+    status = clEnqueueNDRangeKernel(queue, find_neighbors, 1, NULL, &global_work_size, &local_work_size, 0, NULL, NULL);
+    check_cl(status, "enqueue find_neighbors");
+
+    status = clEnqueueReadBuffer(queue, mainOctCL, CL_FALSE, 0, octTreeLength*sizeof(*mainOctTree), mainOctTree, 0, NULL, NULL);
+    check_cl(status, "read oct");
+
+    status = clEnqueueReadBuffer(queue, auxesCL, CL_FALSE, 0, octTreeLength*sizeof(*auxes), auxes, 0, NULL, NULL);
+    check_cl(status, "read aux");
+
+    status = clFinish(queue);
+    check_cl(status, "finish find_neighbors");
+
+    mainOctCL = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, octTreeLength*sizeof(OctTreeNode), mainOctTree, &status);
+    check_cl(status, "recreate mainOctTree");
+
+    //dump_tree();
+
     fflush(stderr);
 
     double last_xpos = 0, last_ypos = 0;
@@ -301,8 +350,19 @@ void push_oct_tree_partial(int c0, int c1, int c2, int c3, int c4, int c5, int c
         int x = (i / 4) % 2;
         int y = (i / 2) % 2;
         int z = i % 2;
+        auxes[child_arr[i]].parent = octTreeLength;
+        auxes[child_arr[i]].id = i;
         mainOctTree[octTreeLength].nodes[x][y][z] = child_arr[i];
     }
+
+    // FIXME: ain't this nice
+    auxes[octTreeLength].neighbors[0][0] = -1;
+    auxes[octTreeLength].neighbors[0][1] = -1;
+    auxes[octTreeLength].neighbors[1][0] = -1;
+    auxes[octTreeLength].neighbors[1][1] = -1;
+    auxes[octTreeLength].neighbors[2][0] = -1;
+    auxes[octTreeLength].neighbors[2][1] = -1;
+
     octTreeLength++;
 }
 
@@ -313,22 +373,69 @@ void push_oct_tree_solid(float r, float g, float b)
     octTreeLength++;
 }
 
-void push_oct_tree_empty(int n0, int n1, int n2, int n3, int n4, int n5, int l0, int l1, int l2, int l3, int l4, int l5)
+void push_oct_tree_empty(void)
 {
     mainOctTree[octTreeLength].type = Empty;
-    mainOctTree[octTreeLength].neighbors[0][0] = n0;
-    mainOctTree[octTreeLength].neighbors[0][1] = n1;
-    mainOctTree[octTreeLength].neighbors[1][0] = n2;
-    mainOctTree[octTreeLength].neighbors[1][1] = n3;
-    mainOctTree[octTreeLength].neighbors[2][0] = n4;
-    mainOctTree[octTreeLength].neighbors[2][1] = n5;
-    mainOctTree[octTreeLength].levels[0][0] = l0;
-    mainOctTree[octTreeLength].levels[0][1] = l1;
-    mainOctTree[octTreeLength].levels[1][0] = l2;
-    mainOctTree[octTreeLength].levels[1][1] = l3;
-    mainOctTree[octTreeLength].levels[2][0] = l4;
-    mainOctTree[octTreeLength].levels[2][1] = l5;
     octTreeLength++;
+}
+
+void calc_levels(int id) {
+    if (auxes[id].parent != -1) {
+        auxes[id].level = auxes[auxes[id].parent].level - 1;
+    } else {
+        auxes[id].level = 0;
+        printf("zeroing %d\n", id);
+    }
+    if (id == 62594)
+        printf("type %d\n", mainOctTree[id].type);
+    if (mainOctTree[id].type >= 0) {
+        for (int i = 0; i < 8; i++) {
+            int x = (i / 4) % 2;
+            int y = (i / 2) % 2;
+            int z = i % 2;
+            calc_levels(mainOctTree[id].nodes[x][y][z]);
+        }
+    }
+}
+
+static void dump_tree(void) {
+    printf("dumping tree:\n");
+    for (int i = 0; i < octTreeLength; i++) {
+        if (mainOctTree[i].type == Solid) {
+            printf("id: %d=%d, level: %d, type: Solid\n", i, auxes[i].id, auxes[i].level);
+        } else if (mainOctTree[i].type == Empty) {
+            printf("id: %d=%d, level: %d, type: Empty, neighbors: [[%d, %d], [%d, %d], [%d, %d]], levels: [[%d, %d], [%d, %d], [%d, %d]]\n", i, auxes[i].id, auxes[i].level,
+                mainOctTree[i].neighbors[0][0],
+                mainOctTree[i].neighbors[0][1],
+                mainOctTree[i].neighbors[1][0],
+                mainOctTree[i].neighbors[1][1],
+                mainOctTree[i].neighbors[2][0],
+                mainOctTree[i].neighbors[2][1],
+                mainOctTree[i].levels[0][0],
+                mainOctTree[i].levels[0][1],
+                mainOctTree[i].levels[1][0],
+                mainOctTree[i].levels[1][1],
+                mainOctTree[i].levels[2][0],
+                mainOctTree[i].levels[2][1]);
+        } else {
+            printf("id: %d=%d, level: %d, type: Partial, neighbors: [[%d, %d], [%d, %d], [%d, %d]], nodes: [%d, %d, %d, %d, %d, %d, %d, %d]\n", i, auxes[i].id, auxes[i].level,
+                auxes[i].neighbors[0][0],
+                auxes[i].neighbors[0][1],
+                auxes[i].neighbors[1][0],
+                auxes[i].neighbors[1][1],
+                auxes[i].neighbors[2][0],
+                auxes[i].neighbors[2][1],
+                mainOctTree[i].nodes[0][0][0],
+                mainOctTree[i].nodes[0][0][1],
+                mainOctTree[i].nodes[0][1][0],
+                mainOctTree[i].nodes[0][1][1],
+                mainOctTree[i].nodes[1][0][0],
+                mainOctTree[i].nodes[1][0][1],
+                mainOctTree[i].nodes[1][1][0],
+                mainOctTree[i].nodes[1][1][1]);
+        }
+    }
+    fflush(stdout);
 }
 
 static void initOctTree(void)

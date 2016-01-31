@@ -227,9 +227,12 @@ void captureOctTree(Point3f camera, Point3f target, Point3f up, int width, int h
         status = clEnqueueAcquireGLObjects(queue, 1, &image, 0, NULL, NULL);
         check_cl(status, "enqueue gl");
 
-        status = clSetKernelArg(kernel, 0, sizeof(cl_float3), &camera);
+        Point3f camera111 = vectMulScalar(camera, (Point3f) { 1.f, 1.f, 1.f }, 1.f);
+        Point3f light111 = vectMulScalar(light, (Point3f) { 1.f, 1.f, 1.f }, 1.f);
+
+        status = clSetKernelArg(kernel, 0, sizeof(cl_float3), &camera111);
         check_cl(status, "set arg 0");
-        status = clSetKernelArg(kernel, 1, sizeof(cl_float3), &light);
+        status = clSetKernelArg(kernel, 1, sizeof(cl_float3), &light111);
         check_cl(status, "set arg 1");
         status = clSetKernelArg(kernel, 2, sizeof(cl_float3), &bottom_left_vec);
         check_cl(status, "set arg 2");
