@@ -382,14 +382,22 @@ void push_oct_tree_empty(void)
 void calc_levels(int id) {
     if (auxes[id].parent != -1) {
         auxes[id].level = auxes[auxes[id].parent].level - 1;
+        mainOctTree[id].radius = mainOctTree[auxes[id].parent].radius * 0.5f;
     } else {
         auxes[id].level = 0;
+        mainOctTree[id].radius = 1.f;
+        mainOctTree[id].center[0] = 1.f;
+        mainOctTree[id].center[1] = 1.f;
+        mainOctTree[id].center[2] = 1.f;
     }
     if (mainOctTree[id].type >= 0) {
         for (int i = 0; i < 8; i++) {
             int x = (i / 4) % 2;
             int y = (i / 2) % 2;
             int z = i % 2;
+            mainOctTree[mainOctTree[id].nodes[x][y][z]].center[0] = mainOctTree[id].center[0] + (x * 2 - 1) * (mainOctTree[id].radius * 0.5f);
+            mainOctTree[mainOctTree[id].nodes[x][y][z]].center[1] = mainOctTree[id].center[1] + (y * 2 - 1) * (mainOctTree[id].radius * 0.5f);
+            mainOctTree[mainOctTree[id].nodes[x][y][z]].center[2] = mainOctTree[id].center[2] + (z * 2 - 1) * (mainOctTree[id].radius * 0.5f);
             calc_levels(mainOctTree[id].nodes[x][y][z]);
         }
     }

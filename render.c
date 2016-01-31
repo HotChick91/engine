@@ -253,7 +253,6 @@ void captureOctTree(Point3f camera, Point3f target, Point3f up, int width, int h
 
         Point3f camera111 = vectMulScalar(origin, (Point3f) { 1.f, 1.f, 1.f }, 1.f);
         Point3f light111 = vectMulScalar(light, (Point3f) { 1.f, 1.f, 1.f }, 1.f);
-        Point3f center111 = vectMulScalar(center, (Point3f) { 1.f, 1.f, 1.f }, 1.f);
         
         // cl_float3 is bigger than Point3f but we're only passing stack-allocated stuff, so reading garbage is safe
         status = clSetKernelArg(kernel, 0, sizeof(cl_float3), &camera111);
@@ -270,12 +269,8 @@ void captureOctTree(Point3f camera, Point3f target, Point3f up, int width, int h
         check_cl(status, "set arg 5");
         status = clSetKernelArg(kernel, 6, sizeof(cl_mem), &image);
         check_cl(status, "set arg 6");
-        status = clSetKernelArg(kernel, 7, sizeof(cl_float), &radius);
+        status = clSetKernelArg(kernel, 7, sizeof(cl_int), &offset);
         check_cl(status, "set arg 7");
-        status = clSetKernelArg(kernel, 8, sizeof(cl_float3), &center111);
-        check_cl(status, "set arg 8");
-        status = clSetKernelArg(kernel, 9, sizeof(cl_int), &offset);
-        check_cl(status, "set arg 9");
 
         // run kernel
         size_t global_work_size[] = {width, height};

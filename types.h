@@ -19,20 +19,24 @@ typedef struct {
 #define Empty (-1)
 #define Solid (-2)
 
-typedef union {
-    struct {
-        Color4f color;
-        short garbage[7];
-        // type must overlap with significant bits of nodes
-        // this won't work with big endian systems
-        short type;
-    };
-    int nodes[2][2][2];
-    struct {
-        int neighbors[3][2];
-        // 0 for root, -1 for its children, and so on
-        char levels[3][2];
-        char padding[2];
+typedef struct {
+    float center[3];
+    float radius;
+    union {
+        struct {
+            Color4f color;
+            short garbage[7];
+            // type must overlap with significant bits of nodes
+            // this won't work with big endian systems
+            short type;
+        };
+        int nodes[2][2][2];
+        struct {
+            int neighbors[3][2];
+            // 0 for root, -1 for its children, and so on
+            char levels[3][2];
+            char padding[2];
+        };
     };
 } OctTreeNode;
 

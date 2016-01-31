@@ -3,60 +3,59 @@
 #define Empty (-1)
 #define Solid (-2)
 
-typedef union {
-    struct {
-        float4 color;
-        short garbage[7];
-        short type;
-    };
-    int nodes[8];
-    struct {
-        int neighbors[3][2];
-        // 0 for root, -1 for its children, and so on
-        char levels[3][2];
-        char padding[2];
+typedef struct {
+    float center[3];
+    float radius;
+    union {
+        struct {
+            float4 color;
+            short garbage[7];
+            // type must overlap with significant bits of nodes
+            // this won't work with big endian systems
+            short type;
+        };
+        int nodes[8];
+        struct {
+            int neighbors[3][2];
+            // 0 for root, -1 for its children, and so on
+            char levels[3][2];
+            char padding[2];
+        };
     };
 } __attribute__((packed)) OctTreeNode;
 
 constant float ambient = 0.1f;
 
-// specify group size to aid in register allocation
+#define CENTER vload3(0, (global float *)tree->center)
+
+// specify group size to aid in register allocation, 8x8 seems optimal
 kernel __attribute__((reqd_work_group_size(8, 8, 1)))
 // TODO: consider passing args in a struct (in constant memory)
-void ray_cl(float3 origin, float3 light, float3 bottom_left_vec, float3 dup, float3 dright, global OctTreeNode *trees, write_only image2d_t image, float radius, float3 center, int offset)
+void ray_cl(float3 origin, float3 light, float3 bottom_left_vec, float3 dup, float3 dright, global OctTreeNode *trees, write_only image2d_t image, int offset)
 {
     // TODO: check if `float3`s take up 3 or 4 registers
     // TODO: try using float[3] instead (it should be dynamically addressable)
     float3 relative;
-    // TODO: see if int instead of a pointer makes any difference
+    // using ints instead of pointers seems to increase register pressure and degrade performance
     global OctTreeNode *tree = trees + offset;
     global OctTreeNode *last_empty_tree = tree;
 
     float3 direction = bottom_left_vec + dup * get_global_id(1) + dright * get_global_id(0);
-
-    // TODO: recalculate last_center and last_radius from some simpler thingy
-    //       or just add them to OctTreeNode
-    float3 last_center = center;
-    float last_radius = radius;
-
+    
     bool chasing_light = 0;
     // TODO: maybe store an octree pointer instead?
     float4 color = (float4)(0,0,0,0);
     float intensity;
 
     for (;;) {
-        relative = origin - center;
+        relative = origin - CENTER;
         
         while (tree->type >= 0) {
             bool dx = relative.x > 0;
             bool dy = relative.y > 0;
             bool dz = relative.z > 0;
             tree = trees + tree->nodes[dx * 4 + dy * 2 + dz];
-            radius *= 0.5f;
-            center = (float3)( center.x + (2 * dx - 1) * radius,
-                               center.y + (2 * dy - 1) * radius,
-                               center.z + (2 * dz - 1) * radius );
-            relative = origin - center;
+            relative = origin - CENTER;
         }
         
         bool solid = tree->type == Solid;
@@ -69,13 +68,11 @@ void ray_cl(float3 origin, float3 light, float3 bottom_left_vec, float3 dup, flo
             chasing_light = 1;
             direction = light - origin;
             tree = last_empty_tree;
-            center = last_center;
-            radius = last_radius;
-            relative = origin - center;
+            relative = origin - CENTER;
         }
         
-        float3 relative_light = light - center;
-        bool b = all(relative_light == clamp(relative_light, -radius, radius));
+        float3 relative_light = light - CENTER;
+        bool b = all(relative_light == clamp(relative_light, -tree->radius, tree->radius));
         solid = tree->type == Solid;
         if (chasing_light && solid) {
             write_imagef(image, (int2)(get_global_id(0), get_global_id(1)), color * ambient);
@@ -87,35 +84,23 @@ void ray_cl(float3 origin, float3 light, float3 bottom_left_vec, float3 dup, flo
         }
 
         last_empty_tree = tree;
-        last_center = center;
-        last_radius = radius;
-        relative = clamp(relative, -radius, radius);
+        relative = clamp(relative, -tree->radius, tree->radius);
 
-        float3 dist = max(native_divide(radius - relative, direction), native_divide(-radius - relative, direction));
+        float3 dist = max(native_divide(tree->radius - relative, direction), native_divide(-tree->radius - relative, direction));
+        float mindist;
         if (dist.x < dist.y && dist.x < dist.z) {
-            bool go_positive = direction.x > 0;
-            radius = pown(2.0f, tree->levels[0][go_positive]);
-            tree = trees + tree->neighbors[0][go_positive];
-            origin += direction * dist.x;
-            center.x += (go_positive * 2 - 1) * 2 * radius;
+            offset = direction.x > 0;
+            mindist = dist.x;
         } else if (dist.y < dist.z) {
-            bool go_positive = direction.y > 0;
-            radius = pown(2.0f, tree->levels[1][go_positive]);
-            tree = trees + tree->neighbors[1][go_positive];
-            origin += direction * dist.y;
-            center.y += (go_positive * 2 - 1) * 2 * radius;
+            offset = 2 + (direction.y > 0);
+            mindist = dist.y;
         } else {
-            bool go_positive = direction.z > 0;
-            radius = pown(2.0f, tree->levels[2][go_positive]);
-            tree = trees + tree->neighbors[2][go_positive];
-            origin += direction * dist.z;
-            center.z += (go_positive * 2 - 1) * 2 * radius;
+            offset = 4 + (direction.z > 0);
+            mindist = dist.z;
         }
+        tree = trees + ((global int *)tree->neighbors)[offset];
         prefetch((global int *)tree, 8);
-        center = native_divide(center, 2 * radius);
-        center = floor(center);
-        center *= 2 * radius;
-        center += radius;
+        origin += direction * mindist;
 
         // this is bit ugly
         if (tree < trees) {
@@ -146,6 +131,7 @@ typedef struct {
     int level;
 } __attribute__((packed)) CheatSheet;
 
+// TODO: remove `level`
 // TODO: optimize this kernel
 // TODO: rename id back to index...
 // XXX: is writing to auxes and trees a good idea?
