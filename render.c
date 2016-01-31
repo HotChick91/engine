@@ -221,15 +221,41 @@ void captureOctTree(Point3f camera, Point3f target, Point3f up, int width, int h
     Point3f dup = vectDiv(relative_up, (float)height);
 
     if (render_method == TracerCL) {
-        // set the args values
         cl_int status;
 
         status = clEnqueueAcquireGLObjects(queue, 1, &image, 0, NULL, NULL);
         check_cl(status, "enqueue gl");
 
-        Point3f camera111 = vectMulScalar(camera, (Point3f) { 1.f, 1.f, 1.f }, 1.f);
-        Point3f light111 = vectMulScalar(light, (Point3f) { 1.f, 1.f, 1.f }, 1.f);
+        // find the camera
+        Point3f origin = camera;
+        OctTreeNode *tree = mainOctTree;
+        int dx, dy, dz;
+        float radius = 1.f;
+        Point3f center = (Point3f) { 0.f, 0.f, 0.f };
+        Point3f local = vectMulScalar(origin, center, -1);
+        cl_int offset = 0;
+        while (tree->type >= 0) {
+            dx = local.x > 0;
+            dy = local.y > 0;
+            dz = local.z > 0;
+            offset = tree->nodes[dx][dy][dz];
+            tree = mainOctTree + offset;
+            
+            radius /= 2.f;
+            center = (Point3f) {
+                center.x + (2 * dx - 1) * radius,
+                center.y + (2 * dy - 1) * radius,
+                center.z + (2 * dz - 1) * radius
+            };
+            
+            local = vectMulScalar(origin, center, -1);
+        }
 
+        Point3f camera111 = vectMulScalar(origin, (Point3f) { 1.f, 1.f, 1.f }, 1.f);
+        Point3f light111 = vectMulScalar(light, (Point3f) { 1.f, 1.f, 1.f }, 1.f);
+        Point3f center111 = vectMulScalar(center, (Point3f) { 1.f, 1.f, 1.f }, 1.f);
+        
+        // cl_float3 is bigger than Point3f but we're only passing stack-allocated stuff, so reading garbage is safe
         status = clSetKernelArg(kernel, 0, sizeof(cl_float3), &camera111);
         check_cl(status, "set arg 0");
         status = clSetKernelArg(kernel, 1, sizeof(cl_float3), &light111);
@@ -244,6 +270,12 @@ void captureOctTree(Point3f camera, Point3f target, Point3f up, int width, int h
         check_cl(status, "set arg 5");
         status = clSetKernelArg(kernel, 6, sizeof(cl_mem), &image);
         check_cl(status, "set arg 6");
+        status = clSetKernelArg(kernel, 7, sizeof(cl_float), &radius);
+        check_cl(status, "set arg 7");
+        status = clSetKernelArg(kernel, 8, sizeof(cl_float3), &center111);
+        check_cl(status, "set arg 8");
+        status = clSetKernelArg(kernel, 9, sizeof(cl_int), &offset);
+        check_cl(status, "set arg 9");
 
         // run kernel
         size_t global_work_size[] = {width, height};

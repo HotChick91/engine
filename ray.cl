@@ -22,17 +22,18 @@ constant float ambient = 0.1f;
 
 // specify group size to aid in register allocation
 kernel __attribute__((reqd_work_group_size(8, 8, 1)))
-void ray_cl(float3 origin, float3 light, float3 bottom_left_vec, float3 dup, float3 dright, global OctTreeNode *trees, write_only image2d_t image)
+// TODO: consider passing args in a struct (in constant memory)
+void ray_cl(float3 origin, float3 light, float3 bottom_left_vec, float3 dup, float3 dright, global OctTreeNode *trees, write_only image2d_t image, float radius, float3 center, int offset)
 {
+    // TODO: check if `float3`s take up 3 or 4 registers
+    // TODO: try using float[3] instead (it should be dynamically addressable)
     float3 relative;
     // TODO: see if int instead of a pointer makes any difference
-    global OctTreeNode *tree = trees;
-    global OctTreeNode *last_empty_tree = trees;
+    global OctTreeNode *tree = trees + offset;
+    global OctTreeNode *last_empty_tree = tree;
 
     float3 direction = bottom_left_vec + dup * get_global_id(1) + dright * get_global_id(0);
 
-    float3 center = (float3)(1,1,1);
-    float radius = 1.f;
     // TODO: recalculate last_center and last_radius from some simpler thingy
     //       or just add them to OctTreeNode
     float3 last_center = center;
@@ -145,6 +146,7 @@ typedef struct {
     int level;
 } __attribute__((packed)) CheatSheet;
 
+// TODO: optimize this kernel
 // TODO: rename id back to index...
 // XXX: is writing to auxes and trees a good idea?
 //      i think it's fine, as there's no cache coherence?
@@ -155,6 +157,7 @@ kernel void find_neighbors(global OctTreeNode *trees, global CheatSheet *auxes, 
     global OctTreeNode *tree = trees + task;
     global CheatSheet *aux = auxes + task;
     int prev = PARENT;
+    // TODO: remove this fuse
     for (int x=0; x<1000000; x++) {
         if (tree->type == Solid) {
             // nothing to do for Solid nodes, just go back up
