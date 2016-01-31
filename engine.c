@@ -384,10 +384,7 @@ void calc_levels(int id) {
         auxes[id].level = auxes[auxes[id].parent].level - 1;
     } else {
         auxes[id].level = 0;
-        printf("zeroing %d\n", id);
     }
-    if (id == 62594)
-        printf("type %d\n", mainOctTree[id].type);
     if (mainOctTree[id].type >= 0) {
         for (int i = 0; i < 8; i++) {
             int x = (i / 4) % 2;

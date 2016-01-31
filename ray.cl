@@ -20,12 +20,12 @@ typedef union {
 
 constant float ambient = 0.1f;
 
-// TODO: see if using sign, step, mix, etc. would be a good idea
-kernel void ray_cl(float3 origin, float3 light, float3 bottom_left_vec, float3 dup, float3 dright, global OctTreeNode *trees, write_only image2d_t image)
+// specify group size to aid in register allocation
+kernel __attribute__((reqd_work_group_size(8, 8, 1)))
+void ray_cl(float3 origin, float3 light, float3 bottom_left_vec, float3 dup, float3 dright, global OctTreeNode *trees, write_only image2d_t image)
 {
     float3 relative;
-    float xdist, ydist, zdist;
-    // TODO: see if OctTreeNode instead of a pointer makes any difference
+    // TODO: see if int instead of a pointer makes any difference
     global OctTreeNode *tree = trees;
     global OctTreeNode *last_empty_tree = trees;
 
@@ -34,6 +34,7 @@ kernel void ray_cl(float3 origin, float3 light, float3 bottom_left_vec, float3 d
     float3 center = (float3)(1,1,1);
     float radius = 1.f;
     // TODO: recalculate last_center and last_radius from some simpler thingy
+    //       or just add them to OctTreeNode
     float3 last_center = center;
     float last_radius = radius;
 
@@ -41,27 +42,28 @@ kernel void ray_cl(float3 origin, float3 light, float3 bottom_left_vec, float3 d
     // TODO: maybe store an octree pointer instead?
     float4 color = (float4)(0,0,0,0);
     float intensity;
-    //printf("sizeof(OctTreeNode)=%d\n", (int)sizeof(OctTreeNode));
 
     for (;;) {
         relative = origin - center;
         
         while (tree->type >= 0) {
-            int dx = relative.x > 0;
-            int dy = relative.y > 0;
-            int dz = relative.z > 0;
+            bool dx = relative.x > 0;
+            bool dy = relative.y > 0;
+            bool dz = relative.z > 0;
             tree = trees + tree->nodes[dx * 4 + dy * 2 + dz];
-            radius /= 2.f;
+            radius *= 0.5f;
             center = (float3)( center.x + (2 * dx - 1) * radius,
                                center.y + (2 * dy - 1) * radius,
                                center.z + (2 * dz - 1) * radius );
             relative = origin - center;
         }
-
         
-        if (!chasing_light && tree->type == Solid) {
-            float dist = distance(light, origin);
-            intensity = 2.f / (2.f + dist * dist);
+        bool solid = tree->type == Solid;
+        if (!chasing_light && solid) {
+            float3 diff = light - origin;
+            diff *= diff;
+            float dist2 = diff.x + diff.y + diff.z;
+            intensity = native_divide(2.f, 2.f + dist2);
             color = tree->color;
             chasing_light = 1;
             direction = light - origin;
@@ -71,15 +73,16 @@ kernel void ray_cl(float3 origin, float3 light, float3 bottom_left_vec, float3 d
             relative = origin - center;
         }
         
-        if (chasing_light) {
-            float3 relative_light = light - center;
-            if (all(relative_light == clamp(relative_light, -radius, radius))) {
-                write_imagef(image, (int2)(get_global_id(0), get_global_id(1)), color * max(intensity, ambient));
-                return;
-            } else if (tree->type == Solid) {
-                write_imagef(image, (int2)(get_global_id(0), get_global_id(1)), color * ambient);
-                return;
-            }
+        float3 relative_light = light - center;
+        bool b = all(relative_light == clamp(relative_light, -radius, radius));
+        solid = tree->type == Solid;
+        if (chasing_light && solid) {
+            write_imagef(image, (int2)(get_global_id(0), get_global_id(1)), color * ambient);
+            return;
+        }
+        if (chasing_light && b) {
+            write_imagef(image, (int2)(get_global_id(0), get_global_id(1)), color * max(intensity, ambient));
+            return;
         }
 
         last_empty_tree = tree;
@@ -87,40 +90,31 @@ kernel void ray_cl(float3 origin, float3 light, float3 bottom_left_vec, float3 d
         last_radius = radius;
         relative = clamp(relative, -radius, radius);
 
-        xdist = max((radius - relative.x) / direction.x, (-radius - relative.x) / direction.x);
-        ydist = max((radius - relative.y) / direction.y, (-radius - relative.y) / direction.y);
-        zdist = max((radius - relative.z) / direction.z, (-radius - relative.z) / direction.z);
-        if (xdist < ydist && xdist < zdist) {
-            int go_positive = direction.x > 0;
+        float3 dist = max(native_divide(radius - relative, direction), native_divide(-radius - relative, direction));
+        if (dist.x < dist.y && dist.x < dist.z) {
+            bool go_positive = direction.x > 0;
             radius = pown(2.0f, tree->levels[0][go_positive]);
             tree = trees + tree->neighbors[0][go_positive];
-            origin += direction * xdist;
+            origin += direction * dist.x;
             center.x += (go_positive * 2 - 1) * 2 * radius;
-        } else if (ydist < zdist) {
-            int go_positive = direction.y > 0;
+        } else if (dist.y < dist.z) {
+            bool go_positive = direction.y > 0;
             radius = pown(2.0f, tree->levels[1][go_positive]);
             tree = trees + tree->neighbors[1][go_positive];
-            origin += direction * ydist;
+            origin += direction * dist.y;
             center.y += (go_positive * 2 - 1) * 2 * radius;
         } else {
-            int go_positive = direction.z > 0;
+            bool go_positive = direction.z > 0;
             radius = pown(2.0f, tree->levels[2][go_positive]);
             tree = trees + tree->neighbors[2][go_positive];
-            origin += direction * zdist;
+            origin += direction * dist.z;
             center.z += (go_positive * 2 - 1) * 2 * radius;
         }
-        center.x /= 2 * radius;
-        center.y /= 2 * radius;
-        center.z /= 2 * radius;
-        center.x = floor(center.x);
-        center.y = floor(center.y);
-        center.z = floor(center.z);
-        center.x *= 2 * radius;
-        center.y *= 2 * radius;
-        center.z *= 2 * radius;
-        center.x += radius;
-        center.y += radius;
-        center.z += radius;
+        prefetch((global int *)tree, 8);
+        center = native_divide(center, 2 * radius);
+        center = floor(center);
+        center *= 2 * radius;
+        center += radius;
 
         // this is bit ugly
         if (tree < trees) {
