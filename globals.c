@@ -10,6 +10,9 @@ Point3f up = {0.f, 0.f, 1.f};
 Point3f light = {0.0f, 0.0f, 0.0f};
 float horizontal_angle = 2.0;
 float vertical_angle = 0.0;
+float camera_speed = 0.05f;
+int camera_movement_active = 0;
+double cursor_turn_speed = 0.02;
 
 float AOV = M_PI / 2;
 float AOVd = M_PI / 128;

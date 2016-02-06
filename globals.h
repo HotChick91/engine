@@ -11,6 +11,9 @@ extern Point3f up;
 extern Point3f light;
 extern float horizontal_angle;
 extern float vertical_angle;
+extern float camera_speed;
+extern int camera_movement_active;
+extern double cursor_turn_speed;
 
 extern float AOV;
 extern float AOVd;

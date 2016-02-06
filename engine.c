@@ -5,6 +5,7 @@
 #include <GLFW/glfw3.h>
 
 #include "cl.h"
+#include "camera.h"
 #include "error.h"
 #include "geom.h"
 #include "globals.h"
@@ -20,6 +21,8 @@ void push_oct_tree_solid(float r, float g, float b);
 void push_oct_tree_partial(int c0, int c1, int c2, int c3, int c4, int c5, int c6, int c7);
 
 static void key_callback(GLFWwindow *windows, int key, int scancode, int action, int mods);
+static void mouse_button_callback(GLFWwindow *window, int button, int action, int mods);
+static void cursor_pos_callback(GLFWwindow *window, double xpos, double ypos);
 static void initOctTree(void);
 
 #define SOFT_CHECK_CL(status, msg) do {if (status != CL_SUCCESS) {num_platforms = 0; fprintf(stderr, "WARNING: %s (%d)\n", msg, status); return;}} while (0)
@@ -154,14 +157,13 @@ int main(int argc, char **argv)
     glfwMakeContextCurrent(window);
     glfwSetInputMode(window, GLFW_STICKY_MOUSE_BUTTONS, 1);
     glfwSetKeyCallback(window, key_callback);
+    glfwSetMouseButtonCallback(window, mouse_button_callback);
+    glfwSetCursorPosCallback(window, cursor_pos_callback);
 
     //**************************** generowanie przykładowych piksli
     hs_init(&argc, &argv);
     initOctTree();
     hs_exit();
-    camera_target = (Point3f) { cosf(horizontal_angle) * cosf(vertical_angle)
-        , sinf(horizontal_angle) * cosf(vertical_angle)
-            , sinf(vertical_angle)};
     float *piksele = malloc(height*width*3*sizeof(*piksele));
 
     printf("sizeof(OctTreeNode)=%d\n", (int)sizeof(OctTreeNode));
@@ -169,30 +171,15 @@ int main(int argc, char **argv)
     //****************************
 
     init_cl();
+    turnCamera(0.f,0.f,0.f); // Calculates initial camera direction
     fflush(stderr);
 
-    double last_xpos = 0, last_ypos = 0;
     /* Loop until the user closes the window */
     while (!glfwWindowShouldClose(window))
     {
         /* Render here */
         for (int i = 0; i < height * width * 3; i++)
             piksele[i] = 0.0;
-
-        double xpos, ypos;
-        glfwGetCursorPos(window, &xpos, &ypos);
-        xpos -= last_xpos;
-        ypos -= last_ypos;
-        last_xpos += xpos;
-        last_ypos += ypos;
-        if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_1) == GLFW_PRESS) {
-            const double alpha = 0.001;
-            horizontal_angle += (float)(xpos * alpha);
-            vertical_angle += (float)(ypos * alpha);
-            camera_target = (Point3f) { cosf(horizontal_angle) * cosf(vertical_angle)
-                , sinf(horizontal_angle) * cosf(vertical_angle)
-                    , sinf(vertical_angle)};
-        }
 
         clock_t start = clock();
         captureOctTree(camera_pos, camera_target, up, width, height, piksele);
@@ -228,67 +215,75 @@ static void key_callback(GLFWwindow *window, int key, int scancode, int action, 
         glfwSetWindowShouldClose(window, GL_TRUE);
     if (action == GLFW_PRESS || action == GLFW_REPEAT)
     {
-        Point3f right = vectMul(camera_target, up);
-        right = vectNormalize(right);
         switch (key) {
             case GLFW_KEY_W:
-                camera_pos = vectMulScalar(camera_pos, camera_target, 0.05f);
+                moveCamera(1.f, 0.f, 0.f);
                 break;
             case GLFW_KEY_S:
-                camera_pos = vectMulScalar(camera_pos, camera_target, -0.05f);
+                moveCamera(-1.f, 0.f, 0.f);
                 break;
             case GLFW_KEY_A:
-                camera_pos = vectMulScalar(camera_pos, right, -0.05f);
+                moveCamera(0.f, -1.f, 0.f);
                 break;
             case GLFW_KEY_D:
-                camera_pos = vectMulScalar(camera_pos, right, 0.05f);
+                moveCamera(0.f, 1.f, 0.f);
                 break;
             case GLFW_KEY_Z:
-                camera_pos = vectMulScalar(camera_pos, up, -0.05f);
+                moveCameraGlobal(0.f, 0.f, -1.f);
                 break;
             case GLFW_KEY_Q:
-                camera_pos = vectMulScalar(camera_pos, up, 0.05f);
+                moveCameraGlobal(0.f, 0.f, 1.f);
                 break;
             case GLFW_KEY_I:
-                vertical_angle += 0.05f;
+                turnCamera(1.f, 0.f, 0.f);
                 break;
             case GLFW_KEY_K:
-                vertical_angle -= 0.05f;
+                turnCamera(-1.f, 0.f, 0.f);
                 break;
             case GLFW_KEY_L:
-                horizontal_angle -= 0.05f;
+                turnCamera(0.f, -1.f, 0.f);
                 break;
             case GLFW_KEY_J:
-                horizontal_angle += 0.05f;
+                turnCamera(0.f, 1.f, 0.f);
                 break;
             case GLFW_KEY_T:
-                AOV -= AOVd;
+                changeFOV(-1.f);
                 break;
             case GLFW_KEY_Y:
-                AOV += AOVd;
+                changeFOV(1.f);
                 break;
             case GLFW_KEY_M:
                 light = camera_pos;
                 break;
             case GLFW_KEY_P:
-                fprintf(stderr, "Current rendering method is: ");
-                if (render_method == Stacking) {
-                    render_method = Stackless;
-                    fprintf(stderr, "Stackless\n");
-                } else if (render_method == Stackless && num_platforms > 0) {
-                    render_method = TracerCL;
-                    fprintf(stderr, "TracerCL\n");
-                } else {
-                    render_method = Stacking;
-                    fprintf(stderr, "Stacking\n");
-                }
-                fflush(stderr);
+                nextRenderMethod();
                 break;
                 /*default:*/
         }
-        camera_target = (Point3f) { cosf(horizontal_angle) * cosf(vertical_angle)
-            , sinf(horizontal_angle) * cosf(vertical_angle)
-                , sinf(vertical_angle)};
+    }
+}
+
+static void mouse_button_callback(GLFWwindow *window, int button, int action, int mods)
+{
+    if (button == GLFW_MOUSE_BUTTON_1 && action == GLFW_PRESS) {
+        camera_movement_active = 1;
+    }
+    if (button == GLFW_MOUSE_BUTTON_1 && action == GLFW_RELEASE) {
+        camera_movement_active = 0;
+    }
+}
+
+static void cursor_pos_callback(GLFWwindow *window, double xpos, double ypos)
+{
+    static double last_xpos = 0, last_ypos = 0;
+
+    xpos -= last_xpos;
+    ypos -= last_ypos;
+    last_xpos += xpos;
+    last_ypos += ypos;
+
+    if (camera_movement_active) {
+        turnCamera(ypos * cursor_turn_speed, xpos * cursor_turn_speed, 0.f);
     }
 }
 

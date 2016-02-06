@@ -24,7 +24,7 @@ executable gen
 
 executable engine
   main-is:  engine.c
-  c-sources: cl.c error.c geom.c globals.c render.c
+  c-sources: cl.c camera.c error.c geom.c globals.c render.c
   Other-Modules: FileLoader
   extra-libraries: m OpenCL
   if os(windows)
