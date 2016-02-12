@@ -22,6 +22,20 @@ executable gen
 
   ghc-options: -Wall -O2 -funbox-strict-fields
 
+executable rasterize
+  main-is: rasterize.hs
+
+  build-depends:
+    aeson >= 0.10,
+    array >= 0.5,
+    base >= 4.5 && < 4.9,
+    bytestring >= 0.10,
+    parsec >= 3.1,
+    parsec-numbers >= 0.1
+
+
+  ghc-options: -Wall -O2 -funbox-strict-fields
+
 executable engine
   main-is:  engine.c
   c-sources: cl.c camera.c error.c geom.c globals.c render.c

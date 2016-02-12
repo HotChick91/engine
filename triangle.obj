@@ -1,0 +1,9 @@
+# OBJ file created by ply_to_obj.c
+#
+g Object001
+
+v 50.0 50.0 50.0
+v -50.0 50.0 50.0
+v 50.0 -50.0 50.0
+
+f 1 2 3
