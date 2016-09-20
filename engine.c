@@ -11,7 +11,7 @@
 #include "render.h"
 #include "types.h"
 
-// TODO create proper file for haskell stuff
+// TODO: create proper file for haskell stuff
 #include "HsFFI.h"
 
 void load_file(HsPtr name);
@@ -22,15 +22,11 @@ void push_oct_tree_partial(int c0, int c1, int c2, int c3, int c4, int c5, int c
 static void key_callback(GLFWwindow *windows, int key, int scancode, int action, int mods);
 static void initOctTree(void);
 
-cl_context context;
-cl_program program;
 #define SOFT_CHECK_CL(status, msg) do {if (status != CL_SUCCESS) {num_platforms = 0; fprintf(stderr, "WARNING: %s (%d)\n", msg, status); return;}} while (0)
 static void init_cl(void)
 {
     cl_int status;
     cl_platform_id platform_id;
-    //cl_context context;
-    //cl_program program;
 
     char *kernel_src = malloc(10240);
     check_nn(kernel_src, "kernel_src");
@@ -70,7 +66,6 @@ static void init_cl(void)
     SOFT_CHECK_CL(status, "create command queue");
 
     // allocate memory objects
-    //mainOctCL = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, octTreeLength*sizeof(OctTreeNode), mainOctTree, &status);
     mainOctCL = clCreateBuffer(context, CL_MEM_COPY_HOST_PTR, octTreeLength*sizeof(OctTreeNode), mainOctTree, &status);
     SOFT_CHECK_CL(status, "create buffer");
 
@@ -125,12 +120,6 @@ static void init_cl(void)
     kernel = clCreateKernel(program, "ray_cl", &status);
     SOFT_CHECK_CL(status, "create kernel");
 
-    //status = clReleaseProgram(program);
-    //SOFT_CHECK_CL(status, "release program");
-
-    //status = clReleaseContext(context);
-    //SOFT_CHECK_CL(status, "release context");
-
     fprintf(stderr, "OpenCL initialization successful\n");
     render_method = TracerCL;
 }
@@ -142,13 +131,13 @@ int main(int argc, char **argv)
 {
     glfwSetErrorCallback(error_callback);
 
-    /* Initialize the library */
+    // Initialize the library
     if (!glfwInit()){
         fprintf(stderr, "Initialization failed.\n");
         return 1;
     }
 
-    /* Create a windowed mode window and its OpenGL context */
+    // Create a windowed mode window and its OpenGL context
     window = glfwCreateWindow(width, height, "Hello World", NULL, NULL);
     if (!window) {
         glfwTerminate();
@@ -156,12 +145,12 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    /* Make the window's context current */
+    // Make the window's context current
     glfwMakeContextCurrent(window);
     glfwSetInputMode(window, GLFW_STICKY_MOUSE_BUTTONS, 1);
     glfwSetKeyCallback(window, key_callback);
 
-    //**************************** generowanie przykładowych piksli
+    // initialize octree
     auxes[0].parent = -1;
     hs_init(&argc, &argv);
     initOctTree();
@@ -176,11 +165,8 @@ int main(int argc, char **argv)
     fprintf(stderr, "sizeof(CheatSheet)=%d\n", (int)sizeof(CheatSheet));
     fflush(stderr);
 
-    //****************************
-
     init_cl();
 
-    //dump_tree();
     cl_int status;
 
     cl_mem auxesCL = clCreateBuffer(context, CL_MEM_COPY_HOST_PTR, octTreeLength*sizeof(*auxes), auxes, &status);
@@ -221,10 +207,9 @@ int main(int argc, char **argv)
     fflush(stderr);
 
     double last_xpos = 0, last_ypos = 0;
-    /* Loop until the user closes the window */
+    // Loop until the user closes the window
     while (!glfwWindowShouldClose(window))
     {
-        /* Render here */
         for (int i = 0; i < height * width * 3; i++)
             piksele[i] = 0.0;
 
@@ -252,10 +237,10 @@ int main(int argc, char **argv)
         snprintf(title, 16, "%d ms", (int)((end - start) / (CLOCKS_PER_SEC / 1000)));
         glfwSetWindowTitle(window, title);
 
-        /* Swap front and back buffers */
+        // Swap front and back buffers
         glfwSwapBuffers(window);
 
-        /* Poll for and process events */
+        // Poll for and process events
         glfwPollEvents();
     }
 
@@ -333,7 +318,6 @@ static void key_callback(GLFWwindow *window, int key, int scancode, int action, 
                 }
                 fflush(stderr);
                 break;
-                /*default:*/
         }
         camera_target = (Point3f) { cosf(horizontal_angle) * cosf(vertical_angle)
             , sinf(horizontal_angle) * cosf(vertical_angle)

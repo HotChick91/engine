@@ -30,3 +30,5 @@ extern cl_kernel kernel;
 extern cl_mem mainOctCL;
 extern cl_mem image;
 extern cl_uint num_platforms;
+extern cl_context context;
+extern cl_program program;
