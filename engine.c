@@ -124,7 +124,6 @@ static void init_cl(void)
     SOFT_CHECK_CL(status, "create kernel");
 
     fprintf(stderr, "OpenCL initialization successful\n");
-    render_method = TracerCL;
 }
 
 CheatSheet auxes[1024*1024];
@@ -170,6 +169,7 @@ int main(int argc, char **argv)
     init_cl();
 
     turnCamera(0.f,0.f,0.f); // Calculates initial camera direction
+    light_mtime = time(NULL);
 
     cl_int status;
 
@@ -230,6 +230,16 @@ int main(int argc, char **argv)
 
         // Poll for and process events
         glfwPollEvents();
+
+        // advance light position
+        const float eps = 0.01f;
+        const double d = (double)(end - light_mtime) / CLOCKS_PER_SEC;
+        const Point3f light_diff = vectMulScalar(light_tgt, light, -1);
+        if (fabs(light_diff.x) < eps && fabs(light_diff.y) < eps && fabs(light_diff.y) < eps)
+            light = light_tgt;
+        else
+            light = vectMulScalar(light, vectNormalize(light_diff), d);
+        light_mtime = end;
     }
 
     if (num_platforms > 0) {
@@ -288,7 +298,7 @@ static void key_callback(GLFWwindow *window, int key, int scancode, int action, 
                 changeFOV(1.f);
                 break;
             case GLFW_KEY_M:
-                light = camera_pos;
+                light_tgt = camera_pos;
                 break;
         }
     }

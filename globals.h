@@ -1,5 +1,6 @@
 #pragma once
 
+#include <time.h>
 #include <GLFW/glfw3.h>
 
 #include "cl.h"
@@ -9,6 +10,8 @@ extern Point3f camera_pos;
 extern Point3f camera_target;
 extern Point3f up;
 extern Point3f light;
+extern Point3f light_tgt;
+extern clock_t light_mtime;
 extern float horizontal_angle;
 extern float vertical_angle;
 extern float camera_speed;

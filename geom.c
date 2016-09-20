@@ -29,8 +29,10 @@ Point3f vectScale(Point3f a, Point3f b)
 
 Point3f vectNormalize(Point3f a)
 {
-    float len = sqrtf(a.x * a.x + a.y * a.y + a.z * a.z);
-    return vectDiv(a, len);
+    float len2 = a.x * a.x + a.y * a.y + a.z * a.z;
+    if (len2 <= 0)
+        return (Point3f) { 0, 0, 0 };
+    return vectDiv(a, sqrtf(len2));
 }
 
 int cmpDistData(const void *a, const void *b)

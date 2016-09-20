@@ -51,5 +51,3 @@ typedef struct {
     float dist;
     int plane;
 } dist_data;
-
-typedef enum { Stacking, Stackless, TracerCL } RenderMethod;
