@@ -17,8 +17,6 @@ double cursor_turn_speed = 0.02;
 float AOV = M_PI / 2;
 float AOVd = M_PI / 128;
 
-RenderMethod render_method = Stacking;
-
 OctTreeNode *mainOctTree;
 int octTreeLength = 0;
 

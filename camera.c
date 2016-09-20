@@ -36,19 +36,3 @@ void changeFOV(float delta)
 {
     AOV += AOVd * delta;
 }
-
-void nextRenderMethod(void)
-{
-    fprintf(stderr, "Render method changed to: ");
-    if (render_method == Stacking) {
-        render_method = Stackless;
-        fprintf(stderr, "Stackless\n");
-    } else if (render_method == Stackless && num_platforms > 0) {
-        render_method = TracerCL;
-        fprintf(stderr, "TracerCL\n");
-    } else {
-        render_method = Stacking;
-        fprintf(stderr, "Stacking\n");
-    }
-    fflush(stderr);
-}

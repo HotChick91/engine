@@ -290,9 +290,6 @@ static void key_callback(GLFWwindow *window, int key, int scancode, int action, 
             case GLFW_KEY_M:
                 light = camera_pos;
                 break;
-            case GLFW_KEY_P:
-                nextRenderMethod();
-                break;
         }
     }
 }

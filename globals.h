@@ -18,8 +18,6 @@ extern double cursor_turn_speed;
 extern float AOV;
 extern float AOVd;
 
-extern RenderMethod render_method;
-
 extern OctTreeNode *mainOctTree;
 extern int octTreeLength;
 
