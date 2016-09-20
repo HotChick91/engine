@@ -5,5 +5,5 @@ void moveCameraGlobal(float x, float y, float z);
 
 void turnCamera(float pitch, float yaw, float roll);
 void changeFOV(float delta);
-void nextRenderMethod();
+void nextRenderMethod(void);
 

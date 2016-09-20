@@ -37,7 +37,7 @@ void changeFOV(float delta)
     AOV += AOVd * delta;
 }
 
-void nextRenderMethod()
+void nextRenderMethod(void)
 {
     fprintf(stderr, "Render method changed to: ");
     if (render_method == Stacking) {
