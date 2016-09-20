@@ -24,24 +24,23 @@ typedef struct {
     };
 } __attribute__((packed)) OctTreeNode;
 
+// coefficient for surfaces not under direct light
 constant float ambient = 0.1f;
 
 #define CENTER vload3(0, (global float *)tree->center)
 
+// main ray tracing kernel
 // specify group size to aid in register allocation, 8x8 seems optimal
 kernel __attribute__((reqd_work_group_size(8, 8, 1)))
-// TODO: consider passing args in a struct (in constant memory)
 void ray_cl(float3 origin, float3 light, float3 bottom_left_vec, float3 dup, float3 dright, global OctTreeNode *trees, write_only image2d_t image, int offset)
 {
-    // TODO: check if `float3`s take up 3 or 4 registers
-    // TODO: try using float[3] instead (it should be dynamically addressable)
     float3 relative;
     // using ints instead of pointers seems to increase register pressure and degrade performance
     global OctTreeNode *tree = trees + offset;
     global OctTreeNode *last_empty_tree = tree;
 
     float3 direction = bottom_left_vec + dup * get_global_id(1) + dright * get_global_id(0);
-    
+
     bool chasing_light = 0;
     // TODO: maybe store an octree pointer instead?
     float4 color = (float4)(0,0,0,0);
@@ -49,17 +48,19 @@ void ray_cl(float3 origin, float3 light, float3 bottom_left_vec, float3 dup, flo
 
     for (;;) {
         relative = origin - CENTER;
-        
+
         while (tree->type >= 0) {
+            // we're in a partial node, descend
             bool dx = relative.x > 0;
             bool dy = relative.y > 0;
             bool dz = relative.z > 0;
             tree = trees + tree->nodes[dx * 4 + dy * 2 + dz];
             relative = origin - CENTER;
         }
-        
+
         bool solid = tree->type == Solid;
         if (!chasing_light && solid) {
+            // primary ray traced, switch to tracing direct light ray
             float3 diff = light - origin;
             diff *= diff;
             float dist2 = diff.x + diff.y + diff.z;
@@ -70,15 +71,17 @@ void ray_cl(float3 origin, float3 light, float3 bottom_left_vec, float3 dup, flo
             tree = last_empty_tree;
             relative = origin - CENTER;
         }
-        
+
         float3 relative_light = light - CENTER;
         bool b = all(relative_light == clamp(relative_light, -tree->radius, tree->radius));
         solid = tree->type == Solid;
         if (chasing_light && solid) {
+            // direct light obstructed
             write_imagef(image, (int2)(get_global_id(0), get_global_id(1)), color * ambient);
             return;
         }
         if (chasing_light && b) {
+            // under direct light
             write_imagef(image, (int2)(get_global_id(0), get_global_id(1)), color * max(intensity, ambient));
             return;
         }
@@ -86,6 +89,7 @@ void ray_cl(float3 origin, float3 light, float3 bottom_left_vec, float3 dup, flo
         last_empty_tree = tree;
         relative = clamp(relative, -tree->radius, tree->radius);
 
+        // move to the next node
         float3 dist = max(native_divide(tree->radius - relative, direction), native_divide(-tree->radius - relative, direction));
         float mindist;
         if (dist.x < dist.y && dist.x < dist.z) {
@@ -102,8 +106,8 @@ void ray_cl(float3 origin, float3 light, float3 bottom_left_vec, float3 dup, flo
         prefetch((global int *)tree, 8);
         origin += direction * mindist;
 
-        // this is bit ugly
         if (tree < trees) {
+            // the ray has escaped the universe
             write_imagef(image, (int2)(get_global_id(0), get_global_id(1)), color * ambient);
             return;
         }
@@ -131,12 +135,9 @@ typedef struct {
     int level;
 } __attribute__((packed)) CheatSheet;
 
-// TODO: remove `level`
-// TODO: optimize this kernel
-// TODO: rename id back to index...
-// XXX: is writing to auxes and trees a good idea?
-//      i think it's fine, as there's no cache coherence?
-// precondition: tasks are `Partial` nodes, and their parents' neighbors have to be filled in `auxes`
+// store information on node adjacency to speed up ray tracing
+// TODO: optimize this kernel, remove `level`, rename `id` to `index`
+// precondition: tasks are `Partial` nodes, and their parents' neighbors are filled in `auxes`
 kernel void find_neighbors(global OctTreeNode *trees, global CheatSheet *auxes, global int *tasks)
 {
     int task = tasks[get_global_id(0)];
