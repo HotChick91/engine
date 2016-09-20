@@ -1,125 +1,213 @@
 #define NULL ((void *)0)
 
-#define Empty 0
-#define Solid 1
-#define Partial 2
+#define Empty (-1)
+#define Solid (-2)
 
 typedef struct {
-    char x, y, z;
-    char type;
-    int parent;
+    float center[3];
+    float radius;
     union {
-        float4 color;
-        int nodes[2][2][2];
+        struct {
+            float4 color;
+            short garbage[7];
+            // type must overlap with significant bits of nodes
+            // this won't work with big endian systems
+            short type;
+        };
+        int nodes[8];
+        struct {
+            int neighbors[3][2];
+            // 0 for root, -1 for its children, and so on
+            char levels[3][2];
+            char padding[2];
+        };
     };
 } __attribute__((packed)) OctTreeNode;
 
+// coefficient for surfaces not under direct light
 constant float ambient = 0.1f;
 
-// TODO: see if using sign, step, mix, etc. would be a good idea
-kernel void ray_cl(float3 origin, float3 light, float3 bottom_left_vec, float3 dup, float3 dright, global OctTreeNode *trees, write_only image2d_t image)
+#define CENTER vload3(0, (global float *)tree->center)
+
+// main ray tracing kernel
+// specify group size to aid in register allocation, 8x8 seems optimal
+kernel __attribute__((reqd_work_group_size(8, 8, 1)))
+void ray_cl(float3 origin, float3 light, float3 bottom_left_vec, float3 dup, float3 dright, global OctTreeNode *trees, write_only image2d_t image, int offset)
 {
-    int2 my_px;
-    float3 relative, new_relative;
-    float xdist, ydist, zdist, mindist;
-    int dx, dy, dz;
-    // TODO: see if OctTreeNode instead of a pointer makes any difference
-    global OctTreeNode *tree = trees;
-    global OctTreeNode *last_empty_tree = trees;
+    float3 relative;
+    // using ints instead of pointers seems to increase register pressure and degrade performance
+    global OctTreeNode *tree = trees + offset;
+    global OctTreeNode *last_empty_tree = tree;
 
-    my_px = (int2)(get_global_id(0), get_global_id(1));
-    float3 direction = bottom_left_vec + dup * my_px.y + dright * my_px.x;
 
-    float3 center = (float3)(0,0,0);
-    float radius = 1;
-    float3 last_center = center;
-    float last_radius = radius;
+    float3 direction = bottom_left_vec + dup * get_global_id(1) + dright * get_global_id(0);
 
     bool chasing_light = 0;
+    // TODO: maybe store an octree pointer instead?
     float4 color = (float4)(0,0,0,0);
     float intensity;
 
     for (;;) {
-        relative = origin - center;
-        
-        while (tree->type == Partial) {
-            dx = relative.x > 0;
-            dy = relative.y > 0;
-            dz = relative.z > 0;
-            tree = trees + tree->nodes[dx][dy][dz];
-            radius /= 2.f;
-            center = (float3)( center.x + (2 * dx - 1) * radius,
-                               center.y + (2 * dy - 1) * radius,
-                               center.z + (2 * dz - 1) * radius );
-            relative = origin - center;
+        relative = origin - CENTER;
+
+        while (tree->type >= 0) {
+            // we're in a partial node, descend
+            bool dx = relative.x > 0;
+            bool dy = relative.y > 0;
+            bool dz = relative.z > 0;
+            tree = trees + tree->nodes[dx * 4 + dy * 2 + dz];
+            relative = origin - CENTER;
         }
 
-        if (!chasing_light && tree->type == Solid) {
-            float dist = distance(light, origin);
-            intensity = 2.f / (2.f + dist * dist);
+
+        bool solid = tree->type == Solid;
+        if (!chasing_light && solid) {
+            // primary ray traced, switch to tracing direct light ray
+            float3 diff = light - origin;
+            diff *= diff;
+            float dist2 = diff.x + diff.y + diff.z;
+            intensity = native_divide(2.f, 2.f + dist2);
             color = tree->color;
             chasing_light = 1;
             direction = light - origin;
             tree = last_empty_tree;
-            radius = last_radius;
-            center = last_center;
-            relative = origin - center;
+            relative = origin - CENTER;
         }
-        
-        if (chasing_light) {
-            float3 relative_light = light - center;
-            if (all(relative_light == clamp(relative_light, -radius, radius))) {
-                write_imagef(image, my_px, color * max(intensity, ambient));
-                return;
-            } else if (tree->type == Solid) {
-                write_imagef(image, my_px, color * ambient);
-                return;
-            }
+
+        float3 relative_light = light - CENTER;
+        bool b = all(relative_light == clamp(relative_light, -tree->radius, tree->radius));
+        solid = tree->type == Solid;
+        if (chasing_light && solid) {
+            // direct light obstructed
+            write_imagef(image, (int2)(get_global_id(0), get_global_id(1)), color * ambient);
+            return;
+        }
+        if (chasing_light && b) {
+            // under direct light
+            write_imagef(image, (int2)(get_global_id(0), get_global_id(1)), color * max(intensity, ambient));
+            return;
         }
 
         last_empty_tree = tree;
-        last_radius = radius;
-        last_center = center;
-        relative = clamp(relative, -radius, radius);
+        relative = clamp(relative, -tree->radius, tree->radius);
 
-        xdist = max((radius - relative.x) / direction.x, (-radius - relative.x) / direction.x);
-        ydist = max((radius - relative.y) / direction.y, (-radius - relative.y) / direction.y);
-        zdist = max((radius - relative.z) / direction.z, (-radius - relative.z) / direction.z);
-        dx = 0, dy = 0, dz = 0;
-        if (xdist < ydist && xdist < zdist) {
-            mindist = xdist;
-            dx = direction.x > 0 ? 1 : -1;
-        } else if (ydist < zdist) {
-            mindist = ydist;
-            dy = direction.y > 0 ? 1 : -1;
+        // move to the next node
+        float3 dist = max(native_divide(tree->radius - relative, direction), native_divide(-tree->radius - relative, direction));
+        float mindist;
+        if (dist.x < dist.y && dist.x < dist.z) {
+            offset = direction.x > 0;
+            mindist = dist.x;
+        } else if (dist.y < dist.z) {
+            offset = 2 + (direction.y > 0);
+            mindist = dist.y;
         } else {
-            mindist = zdist;
-            dz = direction.z > 0 ? 1 : -1;
+            offset = 4 + (direction.z > 0);
+            mindist = dist.z;
         }
-        new_relative = relative + direction * mindist;
-        origin = new_relative + center;
+        tree = trees + ((global int *)tree->neighbors)[offset];
+        prefetch((global int *)tree, 8);
+        origin += direction * mindist;
 
-        while (tree->parent != -1) {
-            int nx = tree->x + dx;
-            int ny = tree->y + dy;
-            int nz = tree->z + dz;
-            if (((nx | ny | nz) & (~1)) == 0) {
-                tree = trees + trees[tree->parent].nodes[nx][ny][nz];
-                // radius stays the same
-                center = (float3)( center.x + (2 * dx) * radius,
-                                   center.y + (2 * dy) * radius,
-                                   center.z + (2 * dz) * radius );
-                break;
+        if (tree < trees) {
+            // the ray has escaped the universe
+            write_imagef(image, (int2)(get_global_id(0), get_global_id(1)), color * ambient);
+            return;
+        }
+    }
+}
+
+#define GO_UP do { \
+        int nextNode = aux->parent; \
+        tree = trees + nextNode; \
+        aux = auxes + nextNode; \
+    } while (0)
+
+#define GO_DOWN(i) do { \
+        int nextNode = tree->nodes[i]; \
+        tree = trees + nextNode; \
+        aux = auxes + nextNode; \
+    } while (0)
+
+#define PARENT (-1)
+
+typedef struct {
+    int id;
+    int parent;
+    int neighbors[3][2];
+    int level;
+} __attribute__((packed)) CheatSheet;
+
+// store information on node adjacency to speed up ray tracing
+// TODO: optimize this kernel, remove `level`, rename `id` to `index`
+// precondition: tasks are `Partial` nodes, and their parents' neighbors are filled in `auxes`
+kernel void find_neighbors(global OctTreeNode *trees, global CheatSheet *auxes, global int *tasks)
+{
+    int task = tasks[get_global_id(0)];
+    global OctTreeNode *tree = trees + task;
+    global CheatSheet *aux = auxes + task;
+    int prev = PARENT;
+    // TODO: remove this fuse
+    for (int x=0; x<1000000; x++) {
+        if (tree->type == Solid) {
+            // nothing to do for Solid nodes, just go back up
+            prev = aux->id;
+            GO_UP;
+        } else if (tree->type == Empty) {
+            // calculate neighbors, then go back up
+            // 0 is x; 1 is y; 2 is z
+            for (int i=0; i<3; i++) {
+                // sibling
+                global OctTreeNode *parentTree = trees + aux->parent;
+                int iThBit = ((aux->id << i) >> 2) & 1;
+                int flipITh = aux->id ^ (4 >> i);
+                tree->neighbors[i][1 - iThBit] = parentTree->nodes[flipITh];
+                tree->levels[i][1 - iThBit] = aux->level;
+                // outside of parent
+                global CheatSheet *parentAux = auxes + aux->parent;
+                int uncleId = parentAux->neighbors[i][iThBit];
+                if (uncleId == -1) {
+                    tree->neighbors[i][iThBit] = -1;
+                    tree->levels[i][iThBit] = 0;
+                } else {
+                    global OctTreeNode *uncle = trees + uncleId;
+                    tree->neighbors[i][iThBit] = uncle->type >= 0 ? uncle->nodes[flipITh] : uncleId;
+                    tree->levels[i][iThBit] = uncle->type >= 0 ? auxes[uncleId].level - 1 : auxes[uncleId].level;
+                }
             }
-            center = (float3)( center.x - (2 * tree->x - 1) * radius,
-                               center.y - (2 * tree->y - 1) * radius,
-                               center.z - (2 * tree->z - 1) * radius );
-            radius *= 2.f;
-            tree = trees + tree->parent;
-        }
-
-        if (tree->parent == -1) {
-            write_imagef(image, my_px, color * ambient);
+            prev = aux->id;
+            GO_UP;
+        } else if (prev == PARENT) {
+            // we've descended to a Partial node
+            // calculate neighbors, then descend to first child
+            for (int i=0; i<3; i++) {
+                // sibling
+                global OctTreeNode *parentTree = trees + aux->parent;
+                int iThBit = ((aux->id << i) >> 2) & 1;
+                int flipITh = aux->id ^ (4 >> i);
+                aux->neighbors[i][1 - iThBit] = parentTree->nodes[flipITh];
+                // outside of parent
+                global CheatSheet *parentAux = auxes + aux->parent;
+                int uncleId = parentAux->neighbors[i][iThBit];
+                if (uncleId == -1) {
+                    aux->neighbors[i][iThBit] = -1;
+                } else {
+                    global OctTreeNode *uncle = trees + uncleId;
+                    aux->neighbors[i][iThBit] = uncle->type >= 0 ? uncle->nodes[flipITh] : uncleId;
+                }
+            }
+            GO_DOWN(0);
+        } else if (prev < 7) {
+            // we've ascended from a child node (but not the last one)
+            // no need to recalculate neighbors, just go to the next child
+            GO_DOWN(prev + 1);
+            prev = PARENT;
+        } else if (tree != trees + task) {
+            // we've ascended from our last child
+            // we can still go up, so do just that
+            prev = aux->id;
+            GO_UP;
+        } else {
+            // dfs complete, we're done
             return;
         }
     }

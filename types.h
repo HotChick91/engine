@@ -16,20 +16,36 @@ typedef struct {
     float a;
 } Color4f;
 
-//enum OctTreeNodeType { Empty, Solid, Partial };
-#define Empty 0
-#define Solid 1
-#define Partial 2
+#define Empty (-1)
+#define Solid (-2)
 
 typedef struct {
-    char x, y, z;
-    char type;
-    int parent;
+    float center[3];
+    float radius;
     union {
-        Color4f color;
+        struct {
+            Color4f color;
+            short garbage[7];
+            // type must overlap with significant bits of nodes
+            // this won't work with big endian systems
+            short type;
+        };
         int nodes[2][2][2];
+        struct {
+            int neighbors[3][2];
+            // 0 for root, -1 for its children, and so on
+            char levels[3][2];
+            char padding[2];
+        };
     };
 } OctTreeNode;
+
+typedef struct {
+    int id;
+    int parent;
+    int neighbors[3][2];
+    int level;
+} CheatSheet;
 
 typedef struct {
     float dist;

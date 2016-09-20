@@ -9,7 +9,7 @@ import Data.List
 import Data.Foldable
 import Data.Aeson
 import Data.Aeson.Types
-import Data.ByteString.Lazy as L hiding (putStrLn)
+import Data.ByteString.Lazy as L hiding (putStrLn, map)
 
 import Foreign.C.Types
 import Foreign.C.String
@@ -20,15 +20,6 @@ foreign import ccall "push_oct_tree_empty" push_empty_c :: IO ()
 foreign export ccall load_file :: CString -> IO ()
 
 data Node = Empty | Solid (Float, Float, Float) | Partial Int Int Int Int Int Int Int Int
-
-{-push_partial_c :: CInt ->CInt ->CInt ->CInt ->CInt ->CInt ->CInt ->CInt -> IO ()-}
-{-push_partial_c a b c d e f g h = putStrLn "pushed partial"-}
-
-{-push_empty_c :: IO ()-}
-{-push_empty_c = putStrLn "pushed empty"-}
-
-{-push_solid_c :: CFloat -> CFloat -> CFloat -> IO ()-}
-{-push_solid_c r g b = putStrLn "pushed solid"-}
 
 processNode :: Value -> IO ()
 processNode val = do

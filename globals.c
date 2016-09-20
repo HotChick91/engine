@@ -24,11 +24,13 @@ int octTreeLength = 0;
 
 GLuint texture;
 GLFWwindow *window;
-const int height = 1024;
-const int width = 1024;
+const int height = 720;
+const int width = 720;
 
 cl_command_queue queue;
 cl_kernel kernel;
 cl_mem mainOctCL;
 cl_mem image;
 cl_uint num_platforms;
+cl_context context;
+cl_program program;
