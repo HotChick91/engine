@@ -1,11 +1,11 @@
-name:            gameengine
-version:         0.0.1.0
-license:         AllRightsReserved
-author:         Envielox <Envielox@gmail.com>
-synopsis:        New approach to gameengining
-cabal-version:   >= 1.8
-build-type:      Simple
-description: New approach to gameengining
+name:          engine
+version:       0.0.1.0
+license:       AllRightsReserved
+author:        Envielox, Bartek Gąsiorzewski
+synopsis:      Octree-based ray tracing demo
+cabal-version: >= 1.8
+build-type:    Simple
+description:   Octree-based ray tracing demo
 
 flag debug
   description: compile C with -g and -O0
