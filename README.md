@@ -5,7 +5,7 @@
 `engine` is an octree-based ray tracer supporting primary and shadow rays.
 It's written in C and OpenCL.
 
-![gif](http://i.giphy.com/onFwxfKDY6qwE.gif)
+![gif](http://www.kodzupa.pl/engine.gif)
 
 ## Setup
 
